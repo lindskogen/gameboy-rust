@@ -8,10 +8,9 @@
 // 0x8000 - 0x9FFF: RAM for LCD display
 //                  Only 8KB is used for DMG
 
+use hex_slice::AsHex;
 use std::fmt;
 use std::ops::Index;
-
-use hex_slice::AsHex;
 
 const MEM_SIZE: usize = 32_000;
 
@@ -36,6 +35,10 @@ impl Memory {
         Memory {
             memory
         }
+    }
+
+    pub fn set_at(&mut self, addr: u16, value: u8) {
+        self.memory[addr as usize] = value;
     }
 }
 

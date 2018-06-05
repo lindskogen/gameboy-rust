@@ -1,10 +1,9 @@
-use std::fs::File;
-
-
 use self::cpu::ProcessingUnit;
 use self::mem::Memory;
+use std::fs::File;
 use std::io;
 use std::io::Read;
+
 
 mod cpu;
 mod mem;
@@ -34,8 +33,12 @@ impl Core {
             cpu: ProcessingUnit::new(memory),
         };
 
-        // core.cpu.next();
-
         println!("{:?}", core.cpu);
+
+
+        loop {
+            core.cpu.next();
+            println!("{:?}", core.cpu);
+        }
     }
 }
