@@ -58,7 +58,7 @@ impl ProcessingUnit {
             0x7A => self.ld_a(self.d),
             0x7B => self.ld_a(self.e),
             0x7C => self.ld_a(self.h),
-            0x7D => self.ld_a(self.mem[self.get_hl()]),
+            0x7E => self.ld_a(self.mem[self.get_hl()]),
 
             _ => {
                 println!("{}", self.mem[pc]);

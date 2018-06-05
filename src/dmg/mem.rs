@@ -11,23 +11,37 @@
 use std::fmt;
 use std::ops::Index;
 
+use hex_slice::AsHex;
+
 const MEM_SIZE: usize = 32_000;
 
 pub struct Memory {
     memory: [u8; MEM_SIZE],
 }
 
-impl Memory {
-    pub fn new() -> Memory {
+impl Default for Memory {
+    fn default() -> Self {
         Memory {
-            memory: [0x06; MEM_SIZE]
+            memory: [0x00; MEM_SIZE]
+        }
+    }
+}
+
+impl Memory {
+    pub fn new(bootloader: [u8; 256]) -> Memory {
+        let mut memory = [0; MEM_SIZE];
+
+        memory[..256].copy_from_slice(&bootloader);
+
+        Memory {
+            memory
         }
     }
 }
 
 impl fmt::Debug for Memory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Memory 90-110: {:?}", &self.memory[90..110])
+        write!(f, "Bootloader: {:x}", &self.memory.as_hex())
     }
 }
 

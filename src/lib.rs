@@ -1,12 +1,20 @@
 #![feature(nll)]
 
+extern crate hex_slice;
+
 mod dmg;
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn it_works() {
-        let d = super::dmg::Core::start();
+        let d = super::dmg::Core::start(None);
+        assert_eq!(2 + 2, 4);
+    }
+
+    #[test]
+    fn it_can_load_bootrom() {
+        let d = super::dmg::Core::start(Some("./DMG_ROM.bin"));
         assert_eq!(2 + 2, 4);
     }
 }
