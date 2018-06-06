@@ -38,7 +38,7 @@ impl Core {
 
         loop {
             core.cpu.next();
-            println!("{:?}", core.cpu);
+            // println!("{:?}", core.cpu);
         }
     }
 }

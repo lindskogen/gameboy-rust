@@ -12,7 +12,7 @@ use hex_slice::AsHex;
 use std::fmt;
 use std::ops::Index;
 
-const MEM_SIZE: usize = 32_000;
+const MEM_SIZE: usize = 0xffff;
 
 pub struct Memory {
     memory: [u8; MEM_SIZE],
@@ -21,14 +21,14 @@ pub struct Memory {
 impl Default for Memory {
     fn default() -> Self {
         Memory {
-            memory: [0x00; MEM_SIZE]
+            memory: [0x01; MEM_SIZE]
         }
     }
 }
 
 impl Memory {
     pub fn new(bootloader: [u8; 256]) -> Memory {
-        let mut memory = [0; MEM_SIZE];
+        let mut memory = [0x01; MEM_SIZE];
 
         memory[..256].copy_from_slice(&bootloader);
 
