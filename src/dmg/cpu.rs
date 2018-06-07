@@ -198,6 +198,22 @@ impl ProcessingUnit {
                 self.ld_hl(n);
             },
 
+            // 4. LD n, A
+            0x7F => self.ld_a(self.a),
+            0x47 => self.ld_b(self.a),
+            0x4F => self.ld_c(self.a),
+            0x57 => self.ld_d(self.a),
+            0x5F => self.ld_e(self.a),
+            0x67 => self.ld_h(self.a),
+            0x6F => self.ld_l(self.a),
+            0x02 => self.mem.set_at(self.get_bc(), self.a),
+            0x12 => self.mem.set_at(self.get_de(), self.a),
+            0x77 => self.mem.set_at(self.get_hl(), self.a),
+            0xEA => {
+                let addr = self.get_immediate_u16();
+                self.mem.set_at(addr, self.a)
+            },
+
             // 5. LD A, (C)
 
             0xF2 => {
@@ -263,6 +279,58 @@ impl ProcessingUnit {
             0xAD => self.xor(self.l),
             0xAE => self.xor(self.mem[self.get_hl()]),
 
+            // 9. INC n
+
+            0x3C => {
+                let a = self.a;
+                self.a += 1;
+
+                self.reset_and_set_carry_zero(a, self.a);
+            },
+            0x04 => {
+                let b = self.b;
+                self.b += 1;
+
+                self.reset_and_set_carry_zero(b, self.b);
+            },
+            0x0C => {
+                let c = self.c;
+                self.c += 1;
+
+                self.reset_and_set_carry_zero(c, self.c);
+            },
+            0x14 => {
+                let d = self.d;
+                self.d += 1;
+
+                self.reset_and_set_carry_zero(d, self.d);
+            },
+            0x1C => {
+                let e = self.e;
+                self.e += 1;
+
+                self.reset_and_set_carry_zero(e, self.e);
+            },
+            0x24 => {
+                let h = self.h;
+                self.h += 1;
+
+                self.reset_and_set_carry_zero(h, self.h);
+            },
+            0x2C => {
+                let l = self.l;
+                self.l += 1;
+
+                self.reset_and_set_carry_zero(l, self.l);
+            },
+            0x34 => {
+                let n = self.mem[self.get_hl()];
+                let nn = n + 1;
+
+                self.reset_and_set_carry_zero(n, nn);
+                self.mem.set_at(self.get_hl(), nn);
+            },
+
             // 3.3.4 16-bit Arithmetic
 
             // 3.3.5 Miscellaneous
@@ -321,6 +389,14 @@ impl ProcessingUnit {
     fn xor(&mut self, n: u8) {
         self.a = self.a ^ n;
         self.reset_and_set_zero(self.a);
+    }
+
+    fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
+        let z = if new == 0 { FLAG_Z_BIT } else { 0 };
+
+        let hc = if (((prev & 0xf) + 1) & 0x10) == 0x10 { 1 } else { 0 };
+
+        self.f = (!FLAG_N_BIT) & ((FLAG_C_BIT & self.f) | hc | z)
     }
 
     fn reset_and_set_zero(&mut self, n: u8) {
