@@ -41,6 +41,12 @@ impl ProcessingUnit {
         }
     }
 
+    fn get_bc(&self) -> u16 {
+        ((self.b as u16) << 8) | (self.c as u16)
+    }
+    fn get_de(&self) -> u16 {
+        ((self.d as u16) << 8) | (self.e as u16)
+    }
     fn get_hl(&self) -> u16 {
         ((self.h as u16) << 8) | (self.l as u16)
     }
@@ -120,7 +126,18 @@ impl ProcessingUnit {
             0x7B => self.ld_a(self.e),
             0x7C => self.ld_a(self.h),
             0x7D => self.ld_a(self.l),
+
+            0x0A => self.ld_a(self.mem[self.get_bc()]),
+            0x1A => self.ld_a(self.mem[self.get_de()]),
             0x7E => self.ld_a(self.mem[self.get_hl()]),
+            0xFA => {
+                let v = self.get_immediate_u16();
+                self.ld_a(self.mem[v]);
+            },
+            0x3E => {
+                let v = self.get_immediate_u8();
+                self.ld_a(v);
+            },
 
             0x40 => self.ld_b(self.b),
             0x41 => self.ld_b(self.c),
@@ -180,6 +197,22 @@ impl ProcessingUnit {
                 let n = self.get_immediate_u8();
                 self.ld_hl(n);
             },
+
+            // 5. LD A, (C)
+
+            0xF2 => {
+                let addr: u16 = 0xff00 + (self.c as u16);
+
+                self.a = self.mem[addr];
+            },
+
+            // 6. LD (C), A
+
+            0xE2 => {
+                let addr: u16 = 0xff00 + (self.c as u16);
+                self.mem.set_at(addr, self.a);
+            },
+
 
 
             // 10, 11, 12: LDD (HL), A
@@ -252,7 +285,7 @@ impl ProcessingUnit {
                         self.f = (!FLAG_N_BIT) & (FLAG_H_BIT | (self.f & FLAG_C_BIT) | z);
                     },
                     _ => {
-                        println!("Unimplemented under 0xCB: {} {:x}", pc, self.mem[pc]);
+                        println!("Unimplemented under 0xCB: {:x} {:x}", pc, self.mem[pc]);
                         println!("{:?}", self);
                         unimplemented!()
                     }
@@ -278,7 +311,7 @@ impl ProcessingUnit {
             // 3.3.11 Returns
 
             _ => {
-                println!("Unimplemented: {} {:x}", pc, self.mem[pc]);
+                println!("Unimplemented: {:x} {:x}", pc, self.mem[pc]);
                 println!("{:?}", self);
                 unimplemented!()
             }
