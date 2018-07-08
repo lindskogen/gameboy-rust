@@ -1,9 +1,5 @@
 use super::mem::Memory;
 
-const REG_P1_ADDR: usize = 0xFF00;
-const REG_SB_ADDR: usize = 0xFF01;
-const REG_SC_ADDR: usize = 0xFF02;
-const REG_DIV_ADDR: usize = 0xFF04;
 const FLAG_Z_BIT: u8 = 0b10000000;
 const FLAG_N_BIT: u8 = 0b01000000;
 const FLAG_H_BIT: u8 = 0b00100000;
@@ -41,6 +37,9 @@ impl ProcessingUnit {
         }
     }
 
+    fn get_af(&self) -> u16 {
+        ((self.a as u16) << 8) | (self.f as u16)
+    }
     fn get_bc(&self) -> u16 {
         ((self.b as u16) << 8) | (self.c as u16)
     }
@@ -199,7 +198,7 @@ impl ProcessingUnit {
             },
 
             // 4. LD n, A
-            0x7F => self.ld_a(self.a),
+            // 0x7F => self.ld_a(self.a),
             0x47 => self.ld_b(self.a),
             0x4F => self.ld_c(self.a),
             0x57 => self.ld_d(self.a),
@@ -240,6 +239,13 @@ impl ProcessingUnit {
                 assert_eq!(hl - 1, self.get_hl());
             },
 
+            // 19. LDH (n), A
+            0xe0 => {
+                let n = self.get_immediate_u8();
+                let addr: u16 = 0xff00 + (n as u16);
+                self.mem.set_at(addr, self.a);
+            },
+
 
             // 3.3.2 16-bit loads
             // 1. LD n, nn
@@ -266,6 +272,13 @@ impl ProcessingUnit {
 
             // 2. LD SP, HL
             0xF9 => self.sp = self.get_hl(),
+
+            // 6. PUSH nn
+
+            0xF5 => self.push_u16(self.get_af()),
+            0xC5 => self.push_u16(self.get_bc()),
+            0xD5 => self.push_u16(self.get_de()),
+            0xE5 => self.push_u16(self.get_hl()),
 
             // 3.3.3 8-bit ALU
             // 7 XOR n
@@ -366,13 +379,19 @@ impl ProcessingUnit {
             0x20 => {
                 let n = self.get_immediate_i8();
                 if (self.f & FLAG_Z_BIT) != 0 {
-                    let pc = self.pc;
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             },
 
 
             // 3.3.9 Calls
+
+            0xCD => {
+                let nn = self.get_immediate_u16();
+                self.push_u16(self.pc);
+                println!("Jumping from {:x} to {:x}", self.pc, nn);
+                self.pc = nn;
+            }
 
             // 3.3.10 Restarts
 
@@ -389,6 +408,17 @@ impl ProcessingUnit {
     fn xor(&mut self, n: u8) {
         self.a = self.a ^ n;
         self.reset_and_set_zero(self.a);
+    }
+
+    fn push_u8(&mut self, n: u8) {
+        self.mem.set_at(self.sp, n);
+        self.sp -= 1;
+    }
+
+    fn push_u16(&mut self, n: u16) {
+        let (n_msb, n_lsb) = (((n & 0xf0) >> 8) as u8, (n & 0x0f) as u8);
+        self.push_u8(n_msb);
+        self.push_u8(n_lsb);
     }
 
     fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
