@@ -1,5 +1,4 @@
-extern crate hex_slice;
-
+extern crate bitflags;
 mod dmg;
 
 #[cfg(test)]

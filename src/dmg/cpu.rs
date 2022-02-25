@@ -1,9 +1,18 @@
+use bitflags::bitflags;
+
 use super::mem::Memory;
 
-const FLAG_Z_BIT: u8 = 0b10000000;
-const FLAG_N_BIT: u8 = 0b01000000;
-const FLAG_H_BIT: u8 = 0b00100000;
-const FLAG_C_BIT: u8 = 0b00010000;
+bitflags! {
+    struct Flags: u8 {
+        const ZERO = 0b10000000;
+        const N = 0b01000000;
+        const H = 0b00100000;
+        const HALF_CARRY = 0b00100000;
+        const C = 0b00010000;
+        const CARRY = 0b00010000;
+        const F = Self::ZERO.bits | Self::N.bits | Self::H.bits | Self::C.bits;
+    }
+}
 
 #[derive(Debug)]
 pub struct ProcessingUnit {
@@ -12,7 +21,7 @@ pub struct ProcessingUnit {
     c: u8,
     d: u8,
     e: u8,
-    f: u8,
+    f: Flags,
     h: u8,
     l: u8,
     pc: u16,
