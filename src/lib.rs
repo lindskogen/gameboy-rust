@@ -1,5 +1,3 @@
-#![feature(nll)]
-
 extern crate hex_slice;
 
 mod dmg;
