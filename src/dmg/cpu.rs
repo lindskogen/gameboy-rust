@@ -87,37 +87,34 @@ impl ProcessingUnit {
         self.pc += 1;
 
         match self.mem[pc] {
-
             // 3.3.1 8-bit loads
             // 1. LD nn,n
-
             0x06 => {
                 let n = self.get_immediate_u8();
                 self.ld_b(n);
-            },
+            }
             0x0E => {
                 let n = self.get_immediate_u8();
                 self.ld_c(n);
-            },
+            }
             0x16 => {
                 let n = self.get_immediate_u8();
                 self.ld_d(n);
-            },
+            }
             0x1E => {
                 let n = self.get_immediate_u8();
                 self.ld_e(n);
-            },
+            }
             0x26 => {
                 let n = self.get_immediate_u8();
                 self.ld_h(n);
-            },
+            }
             0x2E => {
                 let n = self.get_immediate_u8();
                 self.ld_l(n);
-            },
+            }
 
             // 2. LD r1, r2
-
             0x7F => self.ld_a(self.a),
             0x78 => self.ld_a(self.b),
             0x79 => self.ld_a(self.c),
@@ -132,11 +129,11 @@ impl ProcessingUnit {
             0xFA => {
                 let v = self.get_immediate_u16();
                 self.ld_a(self.mem[v]);
-            },
+            }
             0x3E => {
                 let v = self.get_immediate_u8();
                 self.ld_a(v);
-            },
+            }
 
             0x40 => self.ld_b(self.b),
             0x41 => self.ld_b(self.c),
@@ -195,7 +192,7 @@ impl ProcessingUnit {
             0x76 => {
                 let n = self.get_immediate_u8();
                 self.ld_hl(n);
-            },
+            }
 
             // 4. LD n, A
             // 0x7F => self.ld_a(self.a),
@@ -211,24 +208,20 @@ impl ProcessingUnit {
             0xEA => {
                 let addr = self.get_immediate_u16();
                 self.mem.set_at(addr, self.a)
-            },
+            }
 
             // 5. LD A, (C)
-
             0xF2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
 
                 self.a = self.mem[addr];
-            },
+            }
 
             // 6. LD (C), A
-
             0xE2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
                 self.mem.set_at(addr, self.a);
-            },
-
-
+            }
 
             // 10, 11, 12: LDD (HL), A
             0x32 => {
@@ -237,44 +230,41 @@ impl ProcessingUnit {
                 let v = self.get_hl().wrapping_sub(1);
                 self.set_hl(v);
                 assert_eq!(hl - 1, self.get_hl());
-            },
+            }
 
             // 19. LDH (n), A
             0xe0 => {
                 let n = self.get_immediate_u8();
                 let addr: u16 = 0xff00 + (n as u16);
                 self.mem.set_at(addr, self.a);
-            },
-
+            }
 
             // 3.3.2 16-bit loads
             // 1. LD n, nn
-
             0x01 => {
                 let (n1, n2) = self.get_immediate_u16_tuple();
                 self.b = n1;
                 self.c = n2;
-            },
+            }
             0x11 => {
                 let (n1, n2) = self.get_immediate_u16_tuple();
                 self.d = n1;
                 self.e = n2;
-            },
+            }
             0x21 => {
                 let (n1, n2) = self.get_immediate_u16_tuple();
                 self.h = n1;
                 self.l = n2;
-            },
+            }
             0x31 => {
                 let nn = self.get_immediate_u16();
                 self.sp = nn;
-            },
+            }
 
             // 2. LD SP, HL
             0xF9 => self.sp = self.get_hl(),
 
             // 6. PUSH nn
-
             0xF5 => self.push_u16(self.get_af()),
             0xC5 => self.push_u16(self.get_bc()),
             0xD5 => self.push_u16(self.get_de()),
@@ -282,7 +272,6 @@ impl ProcessingUnit {
 
             // 3.3.3 8-bit ALU
             // 7 XOR n
-
             0xAF => self.xor(self.a),
             0xA8 => self.xor(self.b),
             0xA9 => self.xor(self.c),
@@ -293,64 +282,62 @@ impl ProcessingUnit {
             0xAE => self.xor(self.mem[self.get_hl()]),
 
             // 9. INC n
-
             0x3C => {
                 let a = self.a;
                 self.a += 1;
 
                 self.reset_and_set_carry_zero(a, self.a);
-            },
+            }
             0x04 => {
                 let b = self.b;
                 self.b += 1;
 
                 self.reset_and_set_carry_zero(b, self.b);
-            },
+            }
             0x0C => {
                 let c = self.c;
                 self.c += 1;
 
                 self.reset_and_set_carry_zero(c, self.c);
-            },
+            }
             0x14 => {
                 let d = self.d;
                 self.d += 1;
 
                 self.reset_and_set_carry_zero(d, self.d);
-            },
+            }
             0x1C => {
                 let e = self.e;
                 self.e += 1;
 
                 self.reset_and_set_carry_zero(e, self.e);
-            },
+            }
             0x24 => {
                 let h = self.h;
                 self.h += 1;
 
                 self.reset_and_set_carry_zero(h, self.h);
-            },
+            }
             0x2C => {
                 let l = self.l;
                 self.l += 1;
 
                 self.reset_and_set_carry_zero(l, self.l);
-            },
+            }
             0x34 => {
                 let n = self.mem[self.get_hl()];
                 let nn = n + 1;
 
                 self.reset_and_set_carry_zero(n, nn);
                 self.mem.set_at(self.get_hl(), nn);
-            },
+            }
 
             // 3.3.4 16-bit Arithmetic
 
             // 3.3.5 Miscellaneous
 
             // 6 NOP
-
-            0x00 => {},
+            0x00 => {}
 
             // 3.3.6 Rotates & shifts
 
@@ -364,14 +351,14 @@ impl ProcessingUnit {
                         let bit = (self.h >> 6) & 0b1;
                         let z = if bit == 0 { FLAG_Z_BIT } else { 0 };
                         self.f = (!FLAG_N_BIT) & (FLAG_H_BIT | (self.f & FLAG_C_BIT) | z);
-                    },
+                    }
                     _ => {
                         println!("Unimplemented under 0xCB: {:x} {:x}", pc, self.mem[pc]);
                         println!("{:?}", self);
                         unimplemented!()
                     }
                 }
-            },
+            }
 
             // 3.3.8 Jumps
 
@@ -381,11 +368,9 @@ impl ProcessingUnit {
                 if (self.f & FLAG_Z_BIT) != 0 {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
-            },
-
+            }
 
             // 3.3.9 Calls
-
             0xCD => {
                 let nn = self.get_immediate_u16();
                 self.push_u16(self.pc);
@@ -396,7 +381,6 @@ impl ProcessingUnit {
             // 3.3.10 Restarts
 
             // 3.3.11 Returns
-
             _ => {
                 println!("Unimplemented: {:x} {:x}", pc, self.mem[pc]);
                 println!("{:?}", self);
@@ -424,7 +408,11 @@ impl ProcessingUnit {
     fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
         let z = if new == 0 { FLAG_Z_BIT } else { 0 };
 
-        let hc = if (((prev & 0xf) + 1) & 0x10) == 0x10 { 1 } else { 0 };
+        let hc = if (((prev & 0xf) + 1) & 0x10) == 0x10 {
+            1
+        } else {
+            0
+        };
 
         self.f = (!FLAG_N_BIT) & ((FLAG_C_BIT & self.f) | hc | z)
     }
@@ -438,7 +426,6 @@ impl ProcessingUnit {
             0
         };
     }
-
 
     fn ld_a(&mut self, n: u8) {
         self.a = n;
@@ -472,5 +459,3 @@ impl ProcessingUnit {
         self.mem.set_at(self.get_hl(), n);
     }
 }
-
-

@@ -21,7 +21,7 @@ pub struct Memory {
 impl Default for Memory {
     fn default() -> Self {
         Memory {
-            memory: [0x00; MEM_SIZE]
+            memory: [0x00; MEM_SIZE],
         }
     }
 }
@@ -32,9 +32,7 @@ impl Memory {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        Memory {
-            memory
-        }
+        Memory { memory }
     }
 
     pub fn set_at(&mut self, addr: u16, value: u8) {
@@ -55,5 +53,3 @@ impl Index<u16> for Memory {
         &self.memory[index as usize]
     }
 }
-
-
