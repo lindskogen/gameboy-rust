@@ -37,7 +37,7 @@ impl ProcessingUnit {
             c: 0,
             d: 0,
             e: 0,
-            f: 0,
+            f: Flags::empty(),
             h: 0,
             l: 0,
             pc: 0x0,
@@ -47,7 +47,7 @@ impl ProcessingUnit {
     }
 
     fn get_af(&self) -> u16 {
-        ((self.a as u16) << 8) | (self.f as u16)
+        ((self.a as u16) << 8) | (self.f.bits as u16)
     }
     fn get_bc(&self) -> u16 {
         ((self.b as u16) << 8) | (self.c as u16)
@@ -94,6 +94,8 @@ impl ProcessingUnit {
     pub fn next(&mut self) {
         let pc = self.pc;
         self.pc += 1;
+
+        println!("{:x?} {:?} {:?}", pc, self.b, self.f);
 
         match self.mem[pc] {
             // 3.3.1 8-bit loads
@@ -341,6 +343,52 @@ impl ProcessingUnit {
                 self.mem.set_at(self.get_hl(), nn);
             }
 
+            // 10. DEC n
+
+            0x3D => {
+                let prev = self.a;
+                self.a -= 1;
+                self.dec_flags(prev, self.a);
+            }
+            0x05 => {
+                let prev = self.b;
+                self.b -= 1;
+                self.dec_flags(prev, self.b);
+            }
+            0x0D => {
+                let prev = self.c;
+                self.c -= 1;
+                self.dec_flags(prev, self.c);
+            }
+            0x15 => {
+                let prev = self.d;
+                self.d -= 1;
+                self.dec_flags(prev, self.d);
+            }
+            0x1D => {
+                let prev = self.e;
+                self.e -= 1;
+                self.dec_flags(prev, self.e);
+            }
+            0x25 => {
+                let prev = self.h;
+                self.h -= 1;
+                self.dec_flags(prev, self.h);
+            }
+            0x2D => {
+                let prev = self.l;
+                self.l -= 1;
+                self.dec_flags(prev, self.l);
+            }
+            0x35 => {
+                let prev = self.get_hl();
+                self.set_hl(prev - 1);
+                self.dec_flags_16(prev, self.get_hl());
+            }
+
+
+
+
             // 3.3.4 16-bit Arithmetic
 
             // 3.3.5 Miscellaneous
@@ -350,19 +398,37 @@ impl ProcessingUnit {
 
             // 3.3.6 Rotates & shifts
 
+            0x17 => { self.a = self.rl_n_8(self.a); }
+
             // 3.3.7 Bit opcodes
             0xCB => {
-                let npc = self.pc;
+                let npc = pc + 1;
                 self.pc += 1;
-                match self.mem[npc] {
+                let bitinstruction = self.mem[npc].to_le();
+                match bitinstruction {
+                    // RL n
+                    0x17 => { self.a = self.rl_n_8(self.a); }
+                    0x11 => { self.c = self.rl_n_8(self.c); }
+                    0x12 => { self.d = self.rl_n_8(self.d); }
+                    0x13 => { self.e = self.rl_n_8(self.e); }
+                    0x14 => { self.h = self.rl_n_8(self.h); }
+                    0x15 => { self.l = self.rl_n_8(self.l); }
+                    0x16 => {
+                        let i = self.rl_n_16(self.get_hl());
+                        self.set_hl(i);
+                    }
+
                     0x7c => {
                         // BIT 7,H
                         let bit = (self.h >> 6) & 0b1;
-                        let z = if bit == 0 { FLAG_Z_BIT } else { 0 };
-                        self.f = (!FLAG_N_BIT) & (FLAG_H_BIT | (self.f & FLAG_C_BIT) | z);
+                        if bit == 0 {
+                            self.f.insert(Flags::ZERO);
+                        }
+                        self.f.remove(Flags::N);
+                        self.f.insert(Flags::H);
                     }
                     _ => {
-                        println!("Unimplemented under 0xCB: {:x} {:x}", pc, self.mem[pc]);
+                        println!("Unimplemented under 0xCB: pc: {:x} op code: {:x}", npc, self.mem[npc]);
                         println!("{:?}", self);
                         unimplemented!()
                     }
@@ -371,10 +437,10 @@ impl ProcessingUnit {
 
             // 3.3.8 Jumps
 
-            // JR NZ, *
+            // JR NZ,*
             0x20 => {
                 let n = self.get_immediate_i8();
-                if (self.f & FLAG_Z_BIT) != 0 {
+                if !self.f.contains(Flags::ZERO) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             }
@@ -383,20 +449,76 @@ impl ProcessingUnit {
             0xCD => {
                 let nn = self.get_immediate_u16();
                 self.push_u16(self.pc);
-                println!("Jumping from {:x} to {:x}", self.pc, nn);
                 self.pc = nn;
             }
 
             // 3.3.10 Restarts
 
             // 3.3.11 Returns
+
+            // RET
+            0xC9 => {
+                todo!()
+            }
+
+            // 7. POP nn
+            // TODO: check expected endianness of POP
+            0xC1 => {
+                self.b = self.read_sp_u8();
+                self.c = self.read_sp_u8();
+            }
+            0xD1 => {
+                self.d = self.read_sp_u8();
+                self.e = self.read_sp_u8();
+            }
+            0xE1 => {
+                self.h = self.read_sp_u8();
+                self.l = self.read_sp_u8();
+            }
+            0xF1 => {
+                self.a = self.read_sp_u8();
+                self.f.bits = self.read_sp_u8();
+            }
+
+
+
+
             _ => {
-                println!("Unimplemented: {:x} {:x}", pc, self.mem[pc]);
+                println!("Unimplemented: pc: {:x} op: {:x}", pc, self.mem[pc]);
                 println!("{:?}", self);
                 unimplemented!()
             }
         }
     }
+
+    fn rl_n_8(&mut self, v: u8) -> u8 {
+        let carry = (v >> 6) & 0b1;
+        let v = v.rotate_left(1);
+        let bit = v & 0b1;
+        if bit == 0 {
+            self.f.insert(Flags::ZERO);
+        }
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::C, carry == 1);
+
+        v
+    }
+
+    fn rl_n_16(&mut self, v: u16) -> u16 {
+        let carry = (v >> 6) & 0b1;
+        let v = v.rotate_left(1);
+        let bit = v & 0b1;
+        if bit == 0 {
+            self.f.insert(Flags::ZERO);
+        }
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::C, carry == 1);
+
+        v
+    }
+
 
     fn xor(&mut self, n: u8) {
         self.a = self.a ^ n;
@@ -415,25 +537,14 @@ impl ProcessingUnit {
     }
 
     fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
-        let z = if new == 0 { FLAG_Z_BIT } else { 0 };
-
-        let hc = if (((prev & 0xf) + 1) & 0x10) == 0x10 {
-            1
-        } else {
-            0
-        };
-
-        self.f = (!FLAG_N_BIT) & ((FLAG_C_BIT & self.f) | hc | z)
+        self.f.set(Flags::ZERO, new == 0);
+        self.f.set(Flags::HALF_CARRY, (((prev & 0xf) + 1) & 0x10) == 0x10);
+        self.f.remove(Flags::N);
     }
 
     fn reset_and_set_zero(&mut self, n: u8) {
-        // OR 0 with 0x10000000 if a is zero
-        self.f = 0 | if n == 0 {
-            // Z N H C 0 0 0 0
-            FLAG_Z_BIT
-        } else {
-            0
-        };
+        self.f.bits = 0;
+        self.f.set(Flags::ZERO, n == 0);
     }
 
     fn ld_a(&mut self, n: u8) {
@@ -466,5 +577,29 @@ impl ProcessingUnit {
 
     fn ld_hl(&mut self, n: u8) {
         self.mem.set_at(self.get_hl(), n);
+    }
+
+
+    fn read_sp_u8(&mut self) -> u8 {
+        let x = self.mem[self.sp];
+        self.sp += 1;
+
+        return x;
+    }
+
+    fn dec_flags(&mut self, prev: u8, n: u8) {
+        self.f.set(Flags::ZERO, n == 0);
+        self.f.insert(Flags::N);
+
+        // H: Set if no borrow from bit 4
+        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1) );
+    }
+
+    fn dec_flags_16(&mut self, prev: u16, n: u16) {
+        self.f.set(Flags::ZERO, n == 0);
+        self.f.insert(Flags::N);
+
+        // H: Set if no borrow from bit 4
+        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1) );
     }
 }
