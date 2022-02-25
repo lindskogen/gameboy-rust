@@ -32,7 +32,7 @@ impl Core {
 
         // println!("{:?}", core.cpu);
 
-        loop {
+        for i in 0..10_000 {
             core.cpu.next();
             // println!("{:?}", core.cpu);
         }
