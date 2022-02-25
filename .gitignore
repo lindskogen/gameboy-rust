@@ -2,3 +2,4 @@
 /target
 **/*.rs.bk
 Cargo.lock
+DMG_ROM.bin
