@@ -8,7 +8,6 @@
 // 0x8000 - 0x9FFF: RAM for LCD display
 //                  Only 8KB is used for DMG
 
-use hex_slice::AsHex;
 use std::fmt;
 use std::ops::Index;
 
@@ -42,7 +41,7 @@ impl Memory {
 
 impl fmt::Debug for Memory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Bootloader: {:x}", &self.memory.as_hex())
+        write!(f, "Bootloader: {:02x?}", &self.memory[0..0x100])
     }
 }
 
