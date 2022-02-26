@@ -472,6 +472,13 @@ impl ProcessingUnit {
 
             // 3.3.8 Jumps
 
+            // 4. JR n
+            0x18 => {
+                let n = self.get_immediate_i8();
+                self.pc = ((self.pc as i16) + n as i16) as u16;
+            }
+
+
             // 5. JR cc,n
 
             // JR NZ,*
