@@ -462,22 +462,21 @@ impl ProcessingUnit {
             }
 
             // 7. POP nn
-            // TODO: check expected endianness of POP
             0xC1 => {
-                self.b = self.read_sp_u8();
                 self.c = self.read_sp_u8();
+                self.b = self.read_sp_u8();
             }
             0xD1 => {
-                self.d = self.read_sp_u8();
                 self.e = self.read_sp_u8();
+                self.d = self.read_sp_u8();
             }
             0xE1 => {
-                self.h = self.read_sp_u8();
                 self.l = self.read_sp_u8();
+                self.h = self.read_sp_u8();
             }
             0xF1 => {
-                self.a = self.read_sp_u8();
                 self.f.bits = self.read_sp_u8();
+                self.a = self.read_sp_u8();
             }
 
 
@@ -526,12 +525,12 @@ impl ProcessingUnit {
     }
 
     fn push_u8(&mut self, n: u8) {
+        self.sp = self.sp.wrapping_sub(1);
         self.mem.set_at(self.sp, n);
-        self.sp -= 1;
     }
 
     fn push_u16(&mut self, n: u16) {
-        let (n_msb, n_lsb) = (((n & 0xf0) >> 8) as u8, (n & 0x0f) as u8);
+        let (n_msb, n_lsb) = (((n & 0xff00) >> 8) as u8, (n & 0xff) as u8);
         self.push_u8(n_msb);
         self.push_u8(n_lsb);
     }
@@ -582,7 +581,7 @@ impl ProcessingUnit {
 
     fn read_sp_u8(&mut self) -> u8 {
         let x = self.mem[self.sp];
-        self.sp += 1;
+        self.sp = self.sp.wrapping_add(1);
 
         return x;
     }
