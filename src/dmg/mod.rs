@@ -1,8 +1,9 @@
-use self::cpu::ProcessingUnit;
-use self::mem::Memory;
 use std::fs::File;
 use std::io;
 use std::io::Read;
+
+use self::cpu::ProcessingUnit;
+use self::mem::Memory;
 
 mod cpu;
 mod mem;
@@ -32,7 +33,7 @@ impl Core {
 
         // println!("{:?}", core.cpu);
 
-        for i in 0..10_000 {
+        for _ in 0..10_000 {
             core.cpu.next();
             // println!("{:?}", core.cpu);
         }
