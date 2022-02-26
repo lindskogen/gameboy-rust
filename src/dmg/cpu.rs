@@ -102,7 +102,7 @@ impl ProcessingUnit {
         let pc = self.pc;
         self.pc += 1;
 
-        println!("{:x?} {:?} {:?}", pc, self.b, self.f);
+        // println!("{:x?} {:?} {:?}", pc, self.b, self.f);
 
         match self.mem[pc] {
             // 3.3.1 8-bit loads
@@ -308,6 +308,19 @@ impl ProcessingUnit {
             0xAD => self.xor(self.l),
             0xAE => self.xor(self.mem[self.get_hl()]),
 
+            // 8. CP n
+            0xBF => { self.compare_a_with(self.a) }
+            0xB8 => { self.compare_a_with(self.b) }
+            0xB9 => { self.compare_a_with(self.c) }
+            0xBA => { self.compare_a_with(self.d) }
+            0xBC => { self.compare_a_with(self.h) }
+            0xBD => { self.compare_a_with(self.l) }
+            0xBE => { self.compare_a_with(self.mem[self.get_hl()]) }
+            0xFE => {
+                let param = self.get_immediate_u8();
+                self.compare_a_with(param)
+            }
+
             // 9. INC n
             0x3C => {
                 let a = self.a;
@@ -467,6 +480,8 @@ impl ProcessingUnit {
             }
 
             // 3.3.9 Calls
+
+            // CALL nn
             0xCD => {
                 let nn = self.get_immediate_u16();
                 self.push_u16(self.pc);
@@ -479,7 +494,11 @@ impl ProcessingUnit {
 
             // RET
             0xC9 => {
-                todo!()
+                let lsb = self.read_sp_u8() as u16;
+                let msb = self.read_sp_u8() as u16;
+
+                let dest = (msb << 8) | lsb;
+                self.pc = dest
             }
 
             // 7. POP nn
@@ -607,9 +626,12 @@ impl ProcessingUnit {
     fn dec_flags(&mut self, prev: u8, n: u8) {
         self.f.set(Flags::ZERO, n == 0);
         self.f.insert(Flags::N);
+        self.set_half_carry(prev, n);
+    }
 
+    fn set_half_carry(&mut self, prev: u8, n: u8) {
         // H: Set if no borrow from bit 4
-        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1));
+        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1))
     }
 
     fn dec_flags_16(&mut self, prev: u16, n: u16) {
@@ -618,5 +640,12 @@ impl ProcessingUnit {
 
         // H: Set if no borrow from bit 4
         self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1));
+    }
+    fn compare_a_with(&mut self, n: u8) {
+        let nn = self.a.wrapping_sub(n);
+        self.f.set(Flags::ZERO, nn == 0);
+        self.f.insert(Flags::N);
+        self.set_half_carry(n, nn);
+        self.f.set(Flags::CARRY, self.a < n);
     }
 }
