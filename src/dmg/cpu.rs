@@ -236,11 +236,20 @@ impl ProcessingUnit {
 
             // 10, 11, 12: LDD (HL), A
             0x32 => {
-                let hl = self.get_hl();
                 self.mem.set_at(self.get_hl(), self.a);
                 let v = self.get_hl().wrapping_sub(1);
                 self.set_hl(v);
-                assert_eq!(hl - 1, self.get_hl());
+            }
+
+            // 16, 17, 18: LDI (HL), A
+
+            0x22 => {
+                self.ld_hl(self.a);
+
+                let n = self.get_hl();
+                let nn = n.wrapping_add(1);
+                // FIXME: Handle flags after INC
+                self.set_hl(nn)
             }
 
             // 19. LDH (n), A
