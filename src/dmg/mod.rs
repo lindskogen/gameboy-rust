@@ -7,6 +7,7 @@ use self::mem::Memory;
 
 mod cpu;
 mod mem;
+mod debug;
 
 pub struct Core {
     cpu: ProcessingUnit,

@@ -1,5 +1,7 @@
 use bitflags::bitflags;
 
+use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+
 use super::mem::Memory;
 
 bitflags! {
@@ -461,7 +463,7 @@ impl ProcessingUnit {
                         self.f.insert(Flags::H);
                     }
                     _ => {
-                        println!("Unimplemented under 0xCB: pc: {:x} op code: {:x}", npc, self.mem[npc]);
+                        println!("Unimplemented under 0xCB at pc={:x}, op={:x}: {}", npc, self.mem[npc], lookup_cb_prefix_op_code(self.mem[npc]));
                         println!("{:?}", self);
                         unimplemented!()
                     }
@@ -542,7 +544,7 @@ impl ProcessingUnit {
             }
 
             _ => {
-                println!("Unimplemented: pc: {:x} op: {:x}", pc, self.mem[pc]);
+                println!("Unimplemented at pc={:x}, op={:x}: {}", pc, self.mem[pc], lookup_op_code(self.mem[pc]));
                 println!("{:?}", self);
                 unimplemented!()
             }
