@@ -267,6 +267,13 @@ impl ProcessingUnit {
                 self.mem.set_at(addr, self.a);
             }
 
+            // 20. LDH A, (n)
+            0xF0 => {
+                let n = self.get_immediate_u8();
+                let addr: u16 = 0xff00 + (n as u16);
+                self.a = self.mem[addr];
+            }
+
             // 3.3.2 16-bit loads
             // 1. LD n, nn
             0x01 => {

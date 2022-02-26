@@ -34,7 +34,7 @@ impl Core {
 
         // println!("{:?}", core.cpu);
 
-        for _ in 0..10_000 {
+        loop {
             core.cpu.next();
             // println!("{:?}", core.cpu);
         }
