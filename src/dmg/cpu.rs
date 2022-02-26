@@ -59,12 +59,19 @@ impl ProcessingUnit {
         ((self.h as u16) << 8) | (self.l as u16)
     }
 
-    fn set_hl(&mut self, v: u16) {
-        let v1 = (v >> 8) as u8;
-        let v2 = v as u8;
+    fn set_bc(&mut self, v: u16) {
+        self.b = (v >> 8) as u8;
+        self.c = v as u8;
+    }
 
-        self.h = v1;
-        self.l = v2;
+    fn set_de(&mut self, v: u16) {
+        self.d = (v >> 8) as u8;
+        self.e = v as u8;
+    }
+
+    fn set_hl(&mut self, v: u16) {
+        self.h = (v >> 8) as u8;
+        self.l = v as u8;
     }
 
     fn get_immediate_u8(&mut self) -> u8 {
@@ -396,9 +403,14 @@ impl ProcessingUnit {
             }
 
 
-
-
             // 3.3.4 16-bit Arithmetic
+
+            // 3. INC nn
+
+            0x03 => { self.set_bc(self.get_bc().wrapping_add(1)) }
+            0x13 => { self.set_de(self.get_de().wrapping_add(1)) }
+            0x23 => { self.set_hl(self.get_hl().wrapping_add(1)) }
+            0x33 => { self.sp = self.sp.wrapping_add(1) }
 
             // 3.3.5 Miscellaneous
 
@@ -487,9 +499,6 @@ impl ProcessingUnit {
                 self.f.bits = self.read_sp_u8();
                 self.a = self.read_sp_u8();
             }
-
-
-
 
             _ => {
                 println!("Unimplemented: pc: {:x} op: {:x}", pc, self.mem[pc]);
@@ -600,7 +609,7 @@ impl ProcessingUnit {
         self.f.insert(Flags::N);
 
         // H: Set if no borrow from bit 4
-        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1) );
+        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1));
     }
 
     fn dec_flags_16(&mut self, prev: u16, n: u16) {
@@ -608,6 +617,6 @@ impl ProcessingUnit {
         self.f.insert(Flags::N);
 
         // H: Set if no borrow from bit 4
-        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1) );
+        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1));
     }
 }
