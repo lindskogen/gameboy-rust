@@ -255,7 +255,6 @@ impl ProcessingUnit {
 
                 let n = self.get_hl();
                 let nn = n.wrapping_add(1);
-                // FIXME: Handle flags after INC
                 self.set_hl(nn)
             }
 
@@ -471,10 +470,33 @@ impl ProcessingUnit {
 
             // 3.3.8 Jumps
 
+            // 5. JR cc,n
+
             // JR NZ,*
             0x20 => {
                 let n = self.get_immediate_i8();
                 if !self.f.contains(Flags::ZERO) {
+                    self.pc = ((self.pc as i16) + n as i16) as u16;
+                }
+            }
+            // JR Z,*
+            0x28 => {
+                let n = self.get_immediate_i8();
+                if self.f.contains(Flags::ZERO) {
+                    self.pc = ((self.pc as i16) + n as i16) as u16;
+                }
+            }
+            // JR NC,*
+            0x30 => {
+                let n = self.get_immediate_i8();
+                if !self.f.contains(Flags::CARRY) {
+                    self.pc = ((self.pc as i16) + n as i16) as u16;
+                }
+            }
+            // JR C,*
+            0x38 => {
+                let n = self.get_immediate_i8();
+                if self.f.contains(Flags::CARRY) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             }
