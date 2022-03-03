@@ -100,11 +100,23 @@ impl ProcessingUnit {
         v
     }
 
+    pub fn debug_print(&self, pc: u16) {
+
+        let op_code = if self.mem[pc] != 0xCB {
+            lookup_op_code(self.mem[pc])
+        } else {
+            lookup_cb_prefix_op_code(self.mem[pc])
+        };
+
+
+
+        println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
+    }
+
     pub fn next(&mut self) {
         let pc = self.pc;
         self.pc += 1;
-
-        // println!("{:x?} {:?} {:?}", pc, self.b, self.f);
+        // println!("{:x}", pc);
 
         match self.mem[pc] {
             // 3.3.1 8-bit loads
@@ -563,6 +575,8 @@ impl ProcessingUnit {
                 unimplemented!()
             }
         }
+
+        self.debug_print(pc);
     }
 
     fn rl_n_8(&mut self, v: u8) -> u8 {

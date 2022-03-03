@@ -1,5 +1,5 @@
 extern crate bitflags;
-mod dmg;
+pub mod dmg;
 
 #[cfg(test)]
 mod tests {

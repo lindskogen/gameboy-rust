@@ -5,3 +5,8 @@ authors = ["Johan Lindskogen <johan.lindskogen@gmail.com>"]
 
 [dependencies]
 bitflags = "1.3.2"
+
+
+[lib]
+name = "dmg"
+path = "src/lib.rs"

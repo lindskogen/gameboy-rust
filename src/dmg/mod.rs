@@ -32,11 +32,8 @@ impl Core {
             cpu: ProcessingUnit::new(memory),
         };
 
-        // println!("{:?}", core.cpu);
-
         loop {
             core.cpu.next();
-            // println!("{:?}", core.cpu);
         }
     }
 }
