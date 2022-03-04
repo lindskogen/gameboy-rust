@@ -1,16 +1,28 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use dmg::mem::{ROM_SIZE, RomBuffer};
 
 use self::cpu::ProcessingUnit;
-use self::mem::Memory;
+use self::mem::MemoryBus;
 
 mod cpu;
+mod gpu;
 mod mem;
 mod debug;
 
 pub struct Core {
-    cpu: ProcessingUnit,
+    pub cpu: ProcessingUnit,
+}
+
+
+fn read_rom_file(filename: &str) -> io::Result<RomBuffer> {
+    let mut buffer = [0; ROM_SIZE];
+    let mut f = File::open(filename)?;
+
+    f.read(&mut buffer)?;
+
+    Ok(buffer)
 }
 
 fn read_bootloader_file(filename: &str) -> io::Result<[u8; 256]> {
@@ -23,17 +35,14 @@ fn read_bootloader_file(filename: &str) -> io::Result<[u8; 256]> {
 }
 
 impl Core {
-    pub fn start(filename: Option<&str>) {
-        let buffer = filename.and_then(|name| read_bootloader_file(name).ok());
+    pub fn load(boot_rom: &str, game_rom: Option<String>) -> Core {
+        let boot_rom_buffer = read_bootloader_file(boot_rom).expect("Failed to read boot rom");
+        let game_rom_buffer = game_rom.map(|filename| read_rom_file(&filename).expect("Failed to read game rom"));
 
-        let memory = buffer.map(Memory::new).unwrap_or_else(|| Memory::default());
+        let memory = MemoryBus::new(boot_rom_buffer, game_rom_buffer);
 
-        let mut core = Core {
-            cpu: ProcessingUnit::new(memory),
-        };
-
-        loop {
-            core.cpu.next();
+        Core {
+            cpu: ProcessingUnit::new(memory)
         }
     }
 }

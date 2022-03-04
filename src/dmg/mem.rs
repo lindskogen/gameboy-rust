@@ -11,44 +11,78 @@
 use std::fmt;
 use std::ops::Index;
 
+use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
+
+const ROM_BEGIN: usize = 0x100;
+const ROM_END: usize = 0x7fff;
+
+pub const ROM_SIZE: usize = ROM_END - ROM_BEGIN + 1;
+
 const MEM_SIZE: usize = 0xffff;
 
-pub struct Memory {
+pub type RomBuffer = [u8; ROM_SIZE];
+
+pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
+    rom: Option<RomBuffer>,
+    gpu: GPU,
 }
 
-impl Default for Memory {
+impl Default for MemoryBus {
     fn default() -> Self {
-        Memory {
+        MemoryBus {
             memory: [0x00; MEM_SIZE],
+            rom: None,
+            gpu: GPU::new(),
         }
     }
 }
 
-impl Memory {
-    pub fn new(bootloader: [u8; 256]) -> Memory {
+impl MemoryBus {
+    pub fn new(bootloader: [u8; 256], rom: Option<RomBuffer>) -> MemoryBus {
         let mut memory = [0x00; MEM_SIZE];
 
         memory[..256].copy_from_slice(&bootloader);
 
-        Memory { memory }
+        MemoryBus { memory, rom, gpu: GPU::new() }
     }
 
-    pub fn set_at(&mut self, addr: u16, value: u8) {
-        self.memory[addr as usize] = value;
+    pub fn write_byte(&mut self, addr: u16, value: u8) {
+        let address = addr as usize;
+
+        match address {
+            VRAM_BEGIN..=VRAM_END => self.gpu.write_vram(address - VRAM_BEGIN, value),
+            _ => self.memory[address] = value
+        }
+    }
+
+    pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
+        self.gpu.copy_vram_into_buffer(buffer);
     }
 }
 
-impl fmt::Debug for Memory {
+impl fmt::Debug for MemoryBus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Bootloader: {:02x?}", &self.memory[0..0x100])
+        write!(f, "Bootloader: {:02x?}", &self.memory[..256])
     }
 }
 
-impl Index<u16> for Memory {
+impl Index<u16> for MemoryBus {
     type Output = u8;
 
-    fn index(&self, index: u16) -> &Self::Output {
-        &self.memory[index as usize]
+    fn index(&self, addr: u16) -> &Self::Output {
+        let address = addr as usize;
+
+        match address {
+            VRAM_BEGIN..=VRAM_END => self.gpu.read_vram(address - VRAM_BEGIN),
+            ROM_BEGIN..=ROM_END => {
+                if let Some(ref rom) = self.rom {
+                    &rom[address]
+                } else {
+                    &self.memory[address]
+                }
+            }
+            _ => &self.memory[address]
+        }
     }
 }

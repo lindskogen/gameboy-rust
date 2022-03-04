@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
-use super::mem::Memory;
+use super::mem::MemoryBus;
 
 bitflags! {
     struct Flags: u8 {
@@ -28,11 +28,17 @@ pub struct ProcessingUnit {
     l: u8,
     pc: u16,
     sp: u16,
-    mem: Memory,
+    pub mem: MemoryBus,
 }
 
 impl ProcessingUnit {
-    pub fn new(mem: Memory) -> ProcessingUnit {
+    pub fn set_vblank(&mut self) {
+        self.mem.write_byte(0xff44, 0x90);
+    }
+}
+
+impl ProcessingUnit {
+    pub fn new(mem: MemoryBus) -> ProcessingUnit {
         ProcessingUnit {
             a: 0,
             b: 0,
@@ -101,13 +107,11 @@ impl ProcessingUnit {
     }
 
     pub fn debug_print(&self, pc: u16) {
-
         let op_code = if self.mem[pc] != 0xCB {
             lookup_op_code(self.mem[pc])
         } else {
             lookup_cb_prefix_op_code(self.mem[pc])
         };
-
 
 
         println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
@@ -234,12 +238,12 @@ impl ProcessingUnit {
             0x5F => self.ld_e(self.a),
             0x67 => self.ld_h(self.a),
             0x6F => self.ld_l(self.a),
-            0x02 => self.mem.set_at(self.get_bc(), self.a),
-            0x12 => self.mem.set_at(self.get_de(), self.a),
-            0x77 => self.mem.set_at(self.get_hl(), self.a),
+            0x02 => self.mem.write_byte(self.get_bc(), self.a),
+            0x12 => self.mem.write_byte(self.get_de(), self.a),
+            0x77 => self.mem.write_byte(self.get_hl(), self.a),
             0xEA => {
                 let addr = self.get_immediate_u16();
-                self.mem.set_at(addr, self.a)
+                self.mem.write_byte(addr, self.a)
             }
 
             // 5. LD A, (C)
@@ -252,12 +256,12 @@ impl ProcessingUnit {
             // 6. LD (C), A
             0xE2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
-                self.mem.set_at(addr, self.a);
+                self.mem.write_byte(addr, self.a);
             }
 
             // 10, 11, 12: LDD (HL), A
             0x32 => {
-                self.mem.set_at(self.get_hl(), self.a);
+                self.mem.write_byte(self.get_hl(), self.a);
                 let v = self.get_hl().wrapping_sub(1);
                 self.set_hl(v);
             }
@@ -276,7 +280,7 @@ impl ProcessingUnit {
             0xe0 => {
                 let n = self.get_immediate_u8();
                 let addr: u16 = 0xff00 + (n as u16);
-                self.mem.set_at(addr, self.a);
+                self.mem.write_byte(addr, self.a);
             }
 
             // 20. LDH A, (n)
@@ -318,7 +322,20 @@ impl ProcessingUnit {
             0xE5 => self.push_u16(self.get_hl()),
 
             // 3.3.3 8-bit ALU
-            // 7 XOR n
+
+            // 3. SUB n
+
+            0x97 => self.sub_a(self.a),
+            0x90 => self.sub_a(self.b),
+            0x91 => self.sub_a(self.c),
+            0x92 => self.sub_a(self.d),
+            0x93 => self.sub_a(self.e),
+            0x94 => self.sub_a(self.h),
+            0x95 => self.sub_a(self.l),
+            0x96 => self.sub_a(self.mem[self.get_hl()]),
+            // 0x97 => self.sub_a(self.get_immediate_u8()),
+
+            // 7. XOR n
             0xAF => self.xor(self.a),
             0xA8 => self.xor(self.b),
             0xA9 => self.xor(self.c),
@@ -344,43 +361,43 @@ impl ProcessingUnit {
             // 9. INC n
             0x3C => {
                 let a = self.a;
-                self.a += 1;
+                self.a = self.a.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(a, self.a);
             }
             0x04 => {
                 let b = self.b;
-                self.b += 1;
+                self.b = self.b.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(b, self.b);
             }
             0x0C => {
                 let c = self.c;
-                self.c += 1;
+                self.c = self.c.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(c, self.c);
             }
             0x14 => {
                 let d = self.d;
-                self.d += 1;
+                self.d = self.d.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(d, self.d);
             }
             0x1C => {
                 let e = self.e;
-                self.e += 1;
+                self.e = self.e.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(e, self.e);
             }
             0x24 => {
                 let h = self.h;
-                self.h += 1;
+                self.h = self.h.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(h, self.h);
             }
             0x2C => {
                 let l = self.l;
-                self.l += 1;
+                self.l = self.l.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(l, self.l);
             }
@@ -389,49 +406,49 @@ impl ProcessingUnit {
                 let nn = n + 1;
 
                 self.reset_and_set_carry_zero(n, nn);
-                self.mem.set_at(self.get_hl(), nn);
+                self.mem.write_byte(self.get_hl(), nn);
             }
 
             // 10. DEC n
 
             0x3D => {
                 let prev = self.a;
-                self.a -= 1;
+                self.a = self.a.wrapping_sub(1);
                 self.dec_flags(prev, self.a);
             }
             0x05 => {
                 let prev = self.b;
-                self.b -= 1;
+                self.b = self.b.wrapping_sub(1);
                 self.dec_flags(prev, self.b);
             }
             0x0D => {
                 let prev = self.c;
-                self.c -= 1;
+                self.c = self.c.wrapping_sub(1);
                 self.dec_flags(prev, self.c);
             }
             0x15 => {
                 let prev = self.d;
-                self.d -= 1;
+                self.d = self.d.wrapping_sub(1);
                 self.dec_flags(prev, self.d);
             }
             0x1D => {
                 let prev = self.e;
-                self.e -= 1;
+                self.e = self.e.wrapping_sub(1);
                 self.dec_flags(prev, self.e);
             }
             0x25 => {
                 let prev = self.h;
-                self.h -= 1;
+                self.h = self.h.wrapping_sub(1);
                 self.dec_flags(prev, self.h);
             }
             0x2D => {
                 let prev = self.l;
-                self.l -= 1;
+                self.l = self.l.wrapping_sub(1);
                 self.dec_flags(prev, self.l);
             }
             0x35 => {
                 let prev = self.get_hl();
-                self.set_hl(prev - 1);
+                self.set_hl(prev.wrapping_sub(1));
                 self.dec_flags_16(prev, self.get_hl());
             }
 
@@ -615,7 +632,7 @@ impl ProcessingUnit {
 
     fn push_u8(&mut self, n: u8) {
         self.sp = self.sp.wrapping_sub(1);
-        self.mem.set_at(self.sp, n);
+        self.mem.write_byte(self.sp, n);
     }
 
     fn push_u16(&mut self, n: u16) {
@@ -664,7 +681,7 @@ impl ProcessingUnit {
     }
 
     fn ld_hl(&mut self, n: u8) {
-        self.mem.set_at(self.get_hl(), n);
+        self.mem.write_byte(self.get_hl(), n);
     }
 
 
@@ -699,5 +716,13 @@ impl ProcessingUnit {
         self.f.insert(Flags::N);
         self.set_half_carry(n, nn);
         self.f.set(Flags::CARRY, self.a < n);
+    }
+    fn sub_a(&mut self, n: u8) {
+        let nn = self.a.wrapping_sub(n);
+        self.f.set(Flags::ZERO, nn == 0);
+        self.f.insert(Flags::N);
+        self.set_half_carry(n, nn);
+        self.f.set(Flags::CARRY, self.a < n);
+        self.a = nn;
     }
 }
