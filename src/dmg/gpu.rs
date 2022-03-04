@@ -81,13 +81,42 @@ impl GPU {
         }
     }
 
+    fn draw_tile_at(&self, buffer: &mut Vec<u32>, x: u8, y: u8) {
+        let map_offset = 0;
+        let tile_x = x / 8;
+        let tile_y = y / 8;
+
+        let title_id_addr = map_offset + tile_y.wrapping_mul(32).wrapping_add(tile_x);
+
+        let tile_map_id = self.vram[title_id_addr as usize] as u16;
+
+        let addr: usize = (tile_map_id as usize) * 16;
+
+
+        let dx: u8 = 7 - (x % 8);
+        let dy: u16 = y.wrapping_mul(8).wrapping_mul(2) as u16;
+
+        let a = self.vram[addr + dy as usize];
+        let b = self.vram[addr + (dy as usize) + 1];
+
+        let lsb = (a & (1 << dx)) >> dx;
+        let msb = (b & (1 << dx)) >> dx;
+
+        let tile_data = match (lsb != 0, msb != 0) {
+            (true, true) => TilePixelValue::Black,
+            (false, true) => TilePixelValue::DarkGray,
+            (true, false) => TilePixelValue::LightGray,
+            (false, false) => TilePixelValue::White,
+        };
+
+        buffer[(x as usize) + ((y as usize * 144))] = tile_data.to_rgb();
+
+    }
+
     pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        for i in 0..8 {
-            for x in 0..8 {
-                for y in 0..8 {
-                    let c = self.tile_set[i][x][y];
-                    buffer[i * 8 + x + y * 160] = c.to_rgb();
-                }
+        for x in 0..144 {
+            for y in 0..160 {
+                self.draw_tile_at(buffer, x, y);
             }
         }
     }

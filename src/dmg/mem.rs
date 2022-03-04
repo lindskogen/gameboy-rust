@@ -18,7 +18,7 @@ const ROM_END: usize = 0x7fff;
 
 pub const ROM_SIZE: usize = ROM_END - ROM_BEGIN + 1;
 
-const MEM_SIZE: usize = 0xffff;
+const MEM_SIZE: usize = 0xffff + 1;
 
 pub type RomBuffer = [u8; ROM_SIZE];
 

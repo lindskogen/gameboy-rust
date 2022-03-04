@@ -1,3 +1,4 @@
+use std::ops::Neg;
 use bitflags::bitflags;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
@@ -16,6 +17,19 @@ bitflags! {
     }
 }
 
+const LCDC: u16 = 0xFF40;
+const STAT: u16 = 0xFF41;
+const SCY: u16 = 0xFF42;
+const SCX: u16 = 0xFF43;
+const LY: u16 = 0xFF44;
+const LYC: u16 = 0xFF45;
+const DMA: u16 = 0xFF46;
+const BGP: u16 = 0xFF47;
+const OBP0: u16 = 0xFF48;
+const OBP1: u16 = 0xFF49;
+const WY: u16 = 0xFF4A;
+const WX: u16 = 0xFF4B;
+
 #[derive(Debug)]
 pub struct ProcessingUnit {
     a: u8,
@@ -28,12 +42,76 @@ pub struct ProcessingUnit {
     l: u8,
     pc: u16,
     sp: u16,
+    interrupts_enabled: bool,
     pub mem: MemoryBus,
+
+    ppu_cycles: u16,
+}
+
+#[repr(u8)]
+enum StatMode {
+    Hblank = 0x00,
+    Vblank = 0x01,
+    Oam = 0x02,
+    Transfer = 0x03,
 }
 
 impl ProcessingUnit {
-    pub fn set_vblank(&mut self) {
-        self.mem.write_byte(0xff44, 0x90);
+    fn set_stat_mode(&mut self, value: StatMode) {
+        self.mem.write_byte(STAT, (self.mem[STAT] & 0xFC) | value as u8);
+    }
+    fn set_stat_lyc(&mut self, value: bool) {
+        if value {
+            self.mem.write_byte(STAT, self.mem[STAT] | (1 << 6));
+        } else {
+            self.mem.write_byte(STAT, self.mem[STAT] & 0b10111111);
+        }
+    }
+
+    pub fn step_ppu(&mut self) {
+        let mut interrupt_vblank = false;
+
+        self.ppu_cycles = (self.ppu_cycles + 1) % 456;
+        if self.ppu_cycles == 0 {
+            self.mem.write_byte(LY, (self.mem[LY] + 1) % 154);
+        }
+
+        self.set_stat_lyc(false);
+
+
+        if self.mem[LY] >= 0 && self.mem[LY] <= 143 {
+            self.set_stat_mode(StatMode::Hblank);
+
+            if self.ppu_cycles == 4 {
+                self.set_stat_lyc(self.mem[LY] == self.mem[LYC]);
+            } else if self.ppu_cycles >= 80 && self.ppu_cycles <= 84 {
+                self.set_stat_mode(StatMode::Oam);
+            } else if self.ppu_cycles > 84 && self.ppu_cycles < 448 {
+                self.set_stat_mode(StatMode::Hblank);
+            }
+        } else if self.mem[LY] == 144 {
+            self.set_stat_mode(StatMode::Hblank);
+
+            if self.ppu_cycles >= 4 {
+                if self.ppu_cycles == 4 {
+                    interrupt_vblank = true;
+                    // send frame
+                    self.set_stat_lyc(self.mem[LY] == self.mem[LYC]);
+                }
+
+                self.set_stat_mode(StatMode::Vblank);
+            }
+        } else if self.mem[LY] >= 144 && self.mem[LY] < 153 {
+            self.set_stat_mode(StatMode::Vblank);
+            if self.ppu_cycles == 4 {
+                self.set_stat_lyc(self.mem[LY] == self.mem[LYC]);
+            }
+        } else if self.mem[LY] == 153 {
+            self.set_stat_mode(StatMode::Vblank);
+            if self.ppu_cycles == 4 || self.ppu_cycles == 12 {
+                self.set_stat_lyc(self.mem[LY] == self.mem[LYC]);
+            }
+        }
     }
 }
 
@@ -50,7 +128,10 @@ impl ProcessingUnit {
             l: 0,
             pc: 0x0,
             sp: 0xFFFE,
+            interrupts_enabled: true,
             mem,
+
+            ppu_cycles: 0,
         }
     }
 
@@ -95,9 +176,9 @@ impl ProcessingUnit {
     }
 
     fn get_immediate_u16(&mut self) -> u16 {
-        let (n1, n2) = self.get_immediate_u16_tuple();
+        let (msb, lsb) = self.get_immediate_u16_tuple();
 
-        ((n1 as u16) << 8) | (n2 as u16)
+        ((msb as u16) << 8) | (lsb as u16)
     }
 
     fn get_immediate_u16_tuple(&mut self) -> (u8, u8) {
@@ -107,6 +188,10 @@ impl ProcessingUnit {
     }
 
     pub fn debug_print(&self, pc: u16) {
+        if pc < 0x100 {
+            return;
+        }
+
         let op_code = if self.mem[pc] != 0xCB {
             lookup_op_code(self.mem[pc])
         } else {
@@ -287,6 +372,7 @@ impl ProcessingUnit {
             0xF0 => {
                 let n = self.get_immediate_u8();
                 let addr: u16 = 0xff00 + (n as u16);
+                // println!("Load {:x} from {:x} into A", self.mem[addr], addr);
                 self.a = self.mem[addr];
             }
 
@@ -322,6 +408,22 @@ impl ProcessingUnit {
             0xE5 => self.push_u16(self.get_hl()),
 
             // 3.3.3 8-bit ALU
+
+            // 1. ADD A,n
+
+            0x87 => self.add_a(self.a),
+            0x80 => self.add_a(self.b),
+            0x81 => self.add_a(self.c),
+            0x82 => self.add_a(self.d),
+            0x83 => self.add_a(self.e),
+            0x84 => self.add_a(self.h),
+            0x85 => self.add_a(self.l),
+            0x86 => self.add_a(self.mem[self.get_hl()]),
+            0xc6 => {
+                let n = self.get_immediate_u8();
+                self.add_a(n)
+            }
+
 
             // 3. SUB n
 
@@ -464,8 +566,20 @@ impl ProcessingUnit {
 
             // 3.3.5 Miscellaneous
 
-            // 6 NOP
+            // 6. NOP
             0x00 => {}
+
+            // 9. DI
+
+            0xf3 => {
+                self.interrupts_enabled = false;
+            }
+
+            // 10. EI
+            0xfb => {
+                self.interrupts_enabled = true;
+            }
+
 
             // 3.3.6 Rotates & shifts
 
@@ -507,6 +621,9 @@ impl ProcessingUnit {
             }
 
             // 3.3.8 Jumps
+
+            // 1. JP nn
+            0xc3 => { self.pc = self.get_immediate_u16() }
 
             // 4. JR n
             0x18 => {
@@ -721,6 +838,14 @@ impl ProcessingUnit {
         let nn = self.a.wrapping_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.insert(Flags::N);
+        self.set_half_carry(n, nn);
+        self.f.set(Flags::CARRY, self.a < n);
+        self.a = nn;
+    }
+    fn add_a(&mut self, n: u8) {
+        let nn = self.a.wrapping_add(n);
+        self.f.set(Flags::ZERO, nn == 0);
+        self.f.remove(Flags::N);
         self.set_half_carry(n, nn);
         self.f.set(Flags::CARRY, self.a < n);
         self.a = nn;

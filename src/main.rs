@@ -2,9 +2,10 @@ extern crate dmg;
 extern crate minifb;
 
 use std::env;
-use std::env::Args;
-use dmg::dmg::Core;
+
 use minifb::{Key, Window, WindowOptions};
+
+use dmg::dmg::Core;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -35,9 +36,11 @@ fn main() {
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        core.cpu.set_vblank();
         for _ in 0..100 {
             core.cpu.next();
+        }
+        for _ in 0..100 {
+            core.cpu.step_ppu();
         }
 
         core.cpu.mem.copy_vram_into_buffer(&mut buffer);
