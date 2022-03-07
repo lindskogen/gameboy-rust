@@ -1,10 +1,10 @@
 extern crate dmg;
 extern crate minifb;
+extern crate image;
 
 use std::env;
-use std::hint::spin_loop;
 
-use minifb::{Key, Scale, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
 use dmg::dmg::Core;
 
@@ -43,9 +43,12 @@ fn main() {
         let elapsed = core.cpu.next();
         let should_render = core.cpu.mem.gpu.next(elapsed);
 
-        if window.is_key_down(Key::Space) {
+        if window.is_key_down(Key::LeftSuper) && window.is_key_pressed(Key::S, KeyRepeat::No) {
+            write_buffer_to_file(&buffer);
+        }
+
+        if window.is_key_pressed(Key::Space, KeyRepeat::No) {
             core.cpu.mem.gpu.debug_print();
-            loop {}
         }
 
         if should_render {
@@ -57,5 +60,18 @@ fn main() {
                 .update_with_buffer(&buffer, WIDTH, HEIGHT)
                 .unwrap();
         }
+    }
+}
+
+fn write_buffer_to_file(buffer: &Vec<u32>) {
+    let mut slice: Vec<u8> = Vec::new();
+    for num in buffer.iter() {
+        slice.append(&mut num.to_ne_bytes().to_vec());
+    }
+    let result = image::save_buffer("image.png", &slice, WIDTH as u32, HEIGHT as u32, image::ColorType::Rgba8);
+
+    match result {
+        Ok(_) => println!("Saved image to {}", "image.png"),
+        Err(e) => eprintln!("Failed saving image: {}", e)
     }
 }
