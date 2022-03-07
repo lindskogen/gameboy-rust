@@ -1,9 +1,37 @@
+use bitflags::bitflags;
+use std::fmt::Debug;
+use std::usize;
+
 pub const VRAM_BEGIN: usize = 0x8000;
-pub const VRAM_END: usize = 0x9FFF;
+pub const VRAM_END: usize = 0xFF6B;
 pub const VRAM_SIZE: usize = VRAM_END - VRAM_BEGIN + 1;
 
+bitflags! {
+    pub struct Lcdc: u8 {
+        const LCD_DISPLAY_ENABLE = 0b1000_0000;
+        const WINDOW_TILE_MAP_DISPLAY_SELECT = 0b0100_0000;
+        const WINDOW_DISPLAY_ENABLE = 0b0010_0000;
+        const BG_AND_WINDOW_TILE_DATA_SELECT = 0b0001_0000;
+        const BG_TILE_MAP_DISPLAY_SELECT = 0b0000_1000;
+        const OBJ_SIZE = 0b0000_0100;
+        const OBJ_DISPLAY_ENABLE = 0b0000_0010;
+        const BG_AND_WINDOW_DISPLAY = 0b0000_0001;
+    }
+}
 
-#[derive(Copy, Clone)]
+impl Lcdc {
+    fn new() -> Self { Self { bits: 0b0100_1000 } }
+
+    fn lcd_display_enable(&self) -> bool { self.contains(Lcdc::LCD_DISPLAY_ENABLE) }
+
+    fn bg_and_window_tile_data_select(&self) -> u16 { if self.contains(Lcdc::BG_AND_WINDOW_TILE_DATA_SELECT) { 0x8000 } else { 0x8800 } }
+
+    fn bg_tile_map_display_select(&self) -> u16 { if self.contains(Lcdc::BG_TILE_MAP_DISPLAY_SELECT) { 0x9c00 } else { 0x9800 } }
+
+    fn obj_size(&self) -> u16 { if self.contains(Lcdc::OBJ_SIZE) { 16 } else { 8 } }
+}
+
+#[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 enum TilePixelValue {
     Black = 0b00,
@@ -13,110 +41,260 @@ enum TilePixelValue {
 }
 
 impl TilePixelValue {
+    fn from_u8(value: u8) -> TilePixelValue {
+        match value {
+            0b00 => TilePixelValue::Black,
+            0b01 => TilePixelValue::LightGray,
+            0b10 => TilePixelValue::DarkGray,
+            0b11 => TilePixelValue::White,
+            _ => panic!("Unmapped color {:b}", value)
+        }
+    }
+
     fn to_rgb(&self) -> u32 {
         match self {
-            TilePixelValue::Black => 0x00000000,
-            TilePixelValue::LightGray => 0xccccccff,
-            TilePixelValue::DarkGray => 0x999999ff,
-            TilePixelValue::White => 0xffffffff,
+            TilePixelValue::Black => 0xff091820,
+            TilePixelValue::LightGray => 0xff88C070,
+            TilePixelValue::DarkGray => 0xff356856,
+            TilePixelValue::White => 0xffE0F8D0,
+        }
+    }
+
+    fn to_unicode(&self) -> char {
+        match self {
+            TilePixelValue::Black => '▓',
+            TilePixelValue::LightGray => '░',
+            TilePixelValue::DarkGray => '▒',
+            TilePixelValue::White => ' '
         }
     }
 }
 
-type Tile = [[TilePixelValue; 8]; 8];
-
-fn empty_tile() -> Tile {
-    [[TilePixelValue::Black; 8]; 8]
+#[derive(Debug, Copy, Clone)]
+pub struct Stat {
+    // Bit 6 - LYC=LY Coincidence Interrupt (1=Enable) (Read/Write)
+    enable_ly_interrupt: bool,
+    // Bit 5 - Mode 2 OAM Interrupt         (1=Enable) (Read/Write)
+    enable_m2_interrupt: bool,
+    // Bit 4 - Mode 1 V-Blank Interrupt     (1=Enable) (Read/Write)
+    enable_m1_interrupt: bool,
+    // Bit 3 - Mode 0 H-Blank Interrupt     (1=Enable) (Read/Write)
+    enable_m0_interrupt: bool,
+    mode: StatMode,
 }
 
+impl Stat {
+    pub fn new() -> Self {
+        Self {
+            enable_ly_interrupt: false,
+            enable_m2_interrupt: false,
+            enable_m1_interrupt: false,
+            enable_m0_interrupt: false,
+            mode: StatMode::Hblank,
+        }
+    }
+}
 
 pub struct GPU {
+    lcdc: Lcdc,
+    stat: Stat,
     vram: [u8; VRAM_SIZE],
-    tile_set: [Tile; 384],
+
+    scy: u8,
+    scx: u8,
+    wy: u8,
+    wx: u8,
+    ly: u8,
+    lc: u8,
+
+    cycles: u32,
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+enum StatMode {
+    Hblank = 0x00,
+    Vblank = 0x01,
+    Oam = 0x02,
+    Transfer = 0x03,
 }
 
 
 impl GPU {
     pub fn new() -> GPU {
         GPU {
+            lcdc: Lcdc::new(),
+            stat: Stat::new(),
             vram: [0; VRAM_SIZE],
-            tile_set: [empty_tile(); 384],
+
+            scy: 0x00,
+            scx: 0x00,
+            wx: 0x00,
+            wy: 0x00,
+            ly: 0x00,
+            lc: 0x00,
+
+            cycles: 0,
         }
     }
 
 
-    pub fn read_vram(&self, address: usize) -> &u8 {
-        &self.vram[address]
+    fn set_stat_lyc(&mut self, value: bool) {
+        self.stat.enable_ly_interrupt = value;
     }
 
-    pub fn write_vram(&mut self, index: usize, value: u8) {
-        self.vram[index] = value;
+    pub fn next(&mut self, elapsed: u32) -> bool {
+        self.cycles += elapsed;
 
-        if index >= 0x1800 {
-            return;
+        if !self.lcdc.lcd_display_enable() {
+            return false;
         }
 
-        let normalized_index = index & 0xFFFE;
+        let mut should_render = false;
 
-        let byte1 = self.vram[normalized_index];
-        let byte2 = self.vram[normalized_index + 1];
+        let mut interrupt_vblank = false;
 
-        let tile_index = index / 16;
-        let row_index = (index % 16) / 2;
+        match self.stat.mode {
+            StatMode::Hblank => {
+                if self.cycles >= 204 {
+                    self.cycles -= 204;
+                    self.ly += 1;
+                    if self.ly == 144 {
+                        self.stat.mode = StatMode::Vblank;
+                        interrupt_vblank = true;
+                        should_render = true;
+                    } else {
+                        self.stat.mode = StatMode::Oam;
+                    }
+                }
+            }
+            StatMode::Vblank => {
+                if self.cycles >= 456 {
+                    self.cycles -= 456;
+                    self.ly += 1;
+                    if self.ly > 153 {
+                        self.ly = 0;
+                        self.stat.mode = StatMode::Oam;
+                    }
+                }
+            }
+            StatMode::Oam => {
+                if self.cycles >= 80 {
+                    self.cycles -= 80;
+                    self.stat.mode = StatMode::Hblank;
+                }
+            }
+            StatMode::Transfer => {
+                if self.cycles >= 172 {
+                    self.cycles -= 172;
+                    // draw scanline
+                    self.stat.mode = StatMode::Hblank;
+                }
+            }
+        }
+
+        return should_render;
+    }
 
 
-        for pixel_index in 0..8 {
-            let mask = 1 << (7 - pixel_index);
-            let lsb = byte1 & mask;
-            let msb = byte2 & mask;
-
-            let value = match (lsb != 0, msb != 0) {
-                (true, true) => TilePixelValue::Black,
-                (false, true) => TilePixelValue::DarkGray,
-                (true, false) => TilePixelValue::LightGray,
-                (false, false) => TilePixelValue::White,
-            };
-
-            self.tile_set[tile_index][row_index][pixel_index] = value;
+    pub fn read_vram(&self, address: u16) -> u8 {
+        match address {
+            0xff40 => self.lcdc.bits,
+            0xff41 => {
+                let bit6 = if self.stat.enable_ly_interrupt { 0x40 } else { 0x00 };
+                let bit5 = if self.stat.enable_m2_interrupt { 0x20 } else { 0x00 };
+                let bit4 = if self.stat.enable_m1_interrupt { 0x10 } else { 0x00 };
+                let bit3 = if self.stat.enable_m0_interrupt { 0x08 } else { 0x00 };
+                let bit2 = if self.ly == self.lc { 0x04 } else { 0x00 };
+                bit6 | bit5 | bit4 | bit3 | bit2 | (self.stat.mode as u8)
+            }
+            0xff42 => self.scy,
+            0xff43 => self.scx,
+            0xff44 => self.ly,
+            0xff45 => self.lc,
+            0xff4a => self.wx,
+            0xff4b => self.wy,
+            _ => self.vram[address as usize - VRAM_BEGIN]
         }
     }
 
-    fn draw_tile_at(&self, buffer: &mut Vec<u32>, x: u8, y: u8) {
-        let map_offset = 0;
-        let tile_x = x / 8;
-        let tile_y = y / 8;
+    pub fn write_vram(&mut self, index: u16, value: u8) {
+        match index {
+            0xff40 => self.lcdc.bits = value,
+            0xff41 => {
+                self.stat.enable_ly_interrupt = value & 0x40 != 0x00;
+                self.stat.enable_m2_interrupt = value & 0x20 != 0x00;
+                self.stat.enable_m1_interrupt = value & 0x10 != 0x00;
+                self.stat.enable_m0_interrupt = value & 0x08 != 0x00;
+            }
+            0xff42 => self.scy = value,
+            0xff43 => self.scx = value,
+            0xff44 => self.ly = value,
+            0xff45 => self.lc = value,
+            0xff4a => self.wx = value,
+            0xff4b => self.wy = value,
+            _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
+        }
+    }
 
-        let title_id_addr = map_offset + tile_y.wrapping_mul(32).wrapping_add(tile_x);
+    fn draw_tile_at(&self, x: u8, y: u8) -> u32 {
+        let tile_base = self.lcdc.bg_and_window_tile_data_select();
+        let tx = (u16::from(x) >> 3) & 31;
+        let ty = (u16::from(y) >> 3) & 31;
 
-        let tile_map_id = self.vram[title_id_addr as usize] as u16;
+        let bg_base = self.lcdc.bg_tile_map_display_select();
+        let title_addr = bg_base + ty * 32 + tx;
 
-        let addr: usize = (tile_map_id as usize) * 16;
+        let tile_number = self.read_vram(title_addr);
 
+        let tile_offset = if self.lcdc.contains(Lcdc::BG_AND_WINDOW_TILE_DATA_SELECT) {
+            i16::from(tile_number)
+        } else {
+            i16::from(tile_number as i8) + 128
+        } as u16
+            * 16;
 
-        let dx: u8 = 7 - (x % 8);
-        let dy: u16 = y.wrapping_mul(8).wrapping_mul(2) as u16;
+        let tile_location = tile_base + tile_offset;
 
-        let a = self.vram[addr + dy as usize];
-        let b = self.vram[addr + (dy as usize) + 1];
+        let tile_y = y % 8;
 
-        let lsb = (a & (1 << dx)) >> dx;
-        let msb = (b & (1 << dx)) >> dx;
-
-        let tile_data = match (lsb != 0, msb != 0) {
-            (true, true) => TilePixelValue::Black,
-            (false, true) => TilePixelValue::DarkGray,
-            (true, false) => TilePixelValue::LightGray,
-            (false, false) => TilePixelValue::White,
+        let tile_y_data: [u8; 2] = {
+            let a = self.read_vram(tile_location + u16::from(tile_y * 2));
+            let b = self.read_vram(tile_location + u16::from(tile_y * 2) + 1);
+            [a, b]
         };
 
-        buffer[(x as usize) + ((y as usize * 144))] = tile_data.to_rgb();
+        let tile_x = x % 8;
 
+        // Palettes
+        let color_l = if tile_y_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
+        let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
+        let color = (color_h | color_l) as u8;
+
+        TilePixelValue::from_u8(color).to_rgb()
     }
 
     pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        for x in 0..144 {
-            for y in 0..160 {
-                self.draw_tile_at(buffer, x, y);
+        let render_debug_grid = false;
+        let mut i = 0usize;
+        for y in 0..144 {
+            for x in 0..160 {
+                buffer[i] = self.draw_tile_at((x + self.scx) % 160, (y + self.scy) % 144);
+                if render_debug_grid && (x % 8 == 0 || y % 8 == 0) {
+                    buffer[i] = buffer[i] >> 4;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    pub fn debug_print(&self) {
+        for i in 0..100 {
+            let from = i * 0x10;
+            let buffer = &self.vram[from..(from + 0x10)];
+
+            if buffer.iter().any(|n| { *n != 0 }) {
+                println!("{:x}: {:02x?}", from + 0x8000, buffer);
             }
         }
     }

@@ -9,23 +9,22 @@
 //                  Only 8KB is used for DMG
 
 use std::fmt;
-use std::ops::Index;
 
 use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
 
 const ROM_BEGIN: usize = 0x100;
-const ROM_END: usize = 0x7fff;
+pub const ROM_END: usize = 0x7fff;
 
 pub const ROM_SIZE: usize = ROM_END - ROM_BEGIN + 1;
 
 const MEM_SIZE: usize = 0xffff + 1;
 
-pub type RomBuffer = [u8; ROM_SIZE];
+pub type RomBuffer = [u8; ROM_END];
 
 pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
     rom: Option<RomBuffer>,
-    gpu: GPU,
+    pub gpu: GPU,
 }
 
 impl Default for MemoryBus {
@@ -51,8 +50,24 @@ impl MemoryBus {
         let address = addr as usize;
 
         match address {
-            VRAM_BEGIN..=VRAM_END => self.gpu.write_vram(address - VRAM_BEGIN, value),
+            VRAM_BEGIN..=VRAM_END => self.gpu.write_vram(addr, value),
             _ => self.memory[address] = value
+        }
+    }
+
+    pub fn read_byte(&self, addr: u16) -> u8 {
+        let address = addr as usize;
+
+        match address {
+            VRAM_BEGIN..=VRAM_END => self.gpu.read_vram(addr),
+            ROM_BEGIN..=ROM_END => {
+                if let Some(ref rom) = self.rom {
+                    rom[address]
+                } else {
+                    self.memory[address]
+                }
+            }
+            _ => self.memory[address]
         }
     }
 
@@ -64,25 +79,5 @@ impl MemoryBus {
 impl fmt::Debug for MemoryBus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Bootloader: {:02x?}", &self.memory[..256])
-    }
-}
-
-impl Index<u16> for MemoryBus {
-    type Output = u8;
-
-    fn index(&self, addr: u16) -> &Self::Output {
-        let address = addr as usize;
-
-        match address {
-            VRAM_BEGIN..=VRAM_END => self.gpu.read_vram(address - VRAM_BEGIN),
-            ROM_BEGIN..=ROM_END => {
-                if let Some(ref rom) = self.rom {
-                    &rom[address]
-                } else {
-                    &self.memory[address]
-                }
-            }
-            _ => &self.memory[address]
-        }
     }
 }

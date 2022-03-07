@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use dmg::mem::{ROM_SIZE, RomBuffer};
+use dmg::mem::{ROM_END, ROM_SIZE, RomBuffer};
 
 use self::cpu::ProcessingUnit;
 use self::mem::MemoryBus;
@@ -17,7 +17,7 @@ pub struct Core {
 
 
 fn read_rom_file(filename: &str) -> io::Result<RomBuffer> {
-    let mut buffer = [0; ROM_SIZE];
+    let mut buffer = [0; ROM_END];
     let mut f = File::open(filename)?;
 
     f.read(&mut buffer)?;
