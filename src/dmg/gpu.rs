@@ -277,9 +277,9 @@ impl GPU {
     pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
         let render_debug_grid = false;
         let mut i = 0usize;
-        for y in 0..144 {
-            for x in 0..160 {
-                buffer[i] = self.draw_tile_at((x + self.scx) % 160, (y + self.scy) % 144);
+        for y in 0..144u16 {
+            for x in 0..160u16 {
+                buffer[i] = self.draw_tile_at(((x + self.scx as u16) % 160) as u8, ((y + self.scy as u16) % 144) as u8);
                 if render_debug_grid && (x % 8 == 0 || y % 8 == 0) {
                     buffer[i] = buffer[i] >> 4;
                 }

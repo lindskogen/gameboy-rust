@@ -338,6 +338,14 @@ impl ProcessingUnit {
             // 2. LD SP, HL
             0xF9 => self.sp = self.get_hl(),
 
+            // 3. LD HL, SP+n
+            // 4. LDHL SP, n
+
+            0xF8 => {
+                let v = (self.sp as i16 + self.get_immediate_i8() as i16) as u16;
+                self.set_hl(v);
+            }
+
             // 5. LD (nn),SP
             0x08 => {
                 let addr = self.get_immediate_u16();
@@ -554,6 +562,15 @@ impl ProcessingUnit {
 
             // 3.3.4 16-bit Arithmetic
 
+            // 1. ADD HL,n
+            0x29 => {
+                let (new_hl, overflow) = self.get_hl().overflowing_add(self.get_hl());
+                self.f.remove(Flags::N);
+                // TODO - half carry
+                self.f.set(Flags::CARRY, overflow);
+                self.set_hl(new_hl);
+            }
+
             // 3. INC nn
 
             0x03 => { self.set_bc(self.get_bc().wrapping_add(1)) }
@@ -595,9 +612,25 @@ impl ProcessingUnit {
 
             // 3.3.6 Rotates & shifts
 
+            // 1. RLCA
+
+            0x07 => {
+                self.a = self.rl_n_8(self.a);
+            }
+
+            // 2. RLA
             0x17 => { self.a = self.rl_n_8(self.a); }
 
-            // 3.3.7 Bit opcodes
+            // 3. RRCA
+            0x0F => {
+                self.rr_n_8(self.a);
+            }
+
+            // 4. RRA
+            0x1F => {
+                self.rr_n_8(self.a);
+            }
+
             0xCB => {
                 let npc = pc + 1;
                 self.pc += 1;
@@ -641,7 +674,7 @@ impl ProcessingUnit {
                     }
 
 
-                    // RL n
+                    // 6. RL n
                     0x17 => { self.a = self.rl_n_8(self.a); }
                     0x11 => { self.c = self.rl_n_8(self.c); }
                     0x12 => { self.d = self.rl_n_8(self.d); }
@@ -653,8 +686,63 @@ impl ProcessingUnit {
                         self.set_hl(i);
                     }
 
+                    // 8. RR n
+
+                    0x1F => {
+                        self.rr_n_8(self.a);
+                    }
+
+                    0x18 => {
+                        self.rr_n_8(self.b);
+                    }
+
+                    0x19 => {
+                        self.rr_n_8(self.c);
+                    }
+
+                    0x1A => {
+                        self.rr_n_8(self.d);
+                    }
+
+                    0x1B => {
+                        self.rr_n_8(self.e);
+                    }
+
+                    0x1C => {
+                        self.rr_n_8(self.h);
+                    }
+
+                    0x1D => {
+                        self.rr_n_8(self.l);
+                    }
+
+                    0x1E => {
+                        self.rr_n_8(self.mem.read_byte(self.get_hl()));
+                    }
+
+                    // 11. SRL n
+
+                    0x3F => {
+                        let a = self.a;
+                        self.a = a >> 1;
+                        self.f.set(Flags::ZERO, self.a == 0);
+                        self.f.remove(Flags::N);
+                        self.f.remove(Flags::H);
+                        self.f.set(Flags::CARRY, (0b1 & a) != 0)
+                    }
+
+                    0x38 => {
+                        let a = self.b;
+                        self.b = a >> 1;
+                        self.f.set(Flags::ZERO, self.b == 0);
+                        self.f.remove(Flags::N);
+                        self.f.remove(Flags::H);
+                        self.f.set(Flags::CARRY, (0b1 & a) != 0)
+                    }
+
+                    // 3.3.7. Bit Opcodes
+
                     0x7c => {
-                        // BIT 7,H
                         let bit = (self.h >> 6) & 0b1;
                         if bit == 0 {
                             self.f.insert(Flags::ZERO);
@@ -673,7 +761,38 @@ impl ProcessingUnit {
             // 3.3.8 Jumps
 
             // 1. JP nn
-            0xc3 => { self.pc = self.get_immediate_u16() }
+            0xC3 => { self.pc = self.get_immediate_u16() }
+
+            // 2. JP cc,nn
+
+            0xC2 => {
+                if !self.f.contains(Flags::ZERO) {
+                    self.pc = self.get_immediate_u16()
+                }
+            }
+
+            0xCA => {
+                if self.f.contains(Flags::ZERO) {
+                    self.pc = self.get_immediate_u16()
+                }
+            }
+
+            0xD2 => {
+                if !self.f.contains(Flags::CARRY) {
+                    self.pc = self.get_immediate_u16()
+                }
+            }
+
+            0xDA => {
+                if self.f.contains(Flags::CARRY) {
+                    self.pc = self.get_immediate_u16()
+                }
+            }
+
+            // 3. JP (HL)
+            0xE9 => {
+                self.pc = self.get_hl();
+            }
 
             // 4. JR n
             0x18 => {
@@ -716,43 +835,31 @@ impl ProcessingUnit {
             // 3.3.9 Calls
 
             // 1. CALL nn
-            0xCD => {
-                let nn = self.get_immediate_u16();
-                self.push_u16(self.pc);
-                self.pc = nn;
-            }
+            0xCD => self.call(),
 
             // 2. CALL cc,nn
 
             0xC4 => {
                 if !self.f.contains(Flags::ZERO) {
-                    let nn = self.get_immediate_u16();
-                    self.push_u16(self.pc);
-                    self.pc = nn;
+                    self.call();
                 }
             }
 
             0xCC => {
                 if self.f.contains(Flags::ZERO) {
-                    let nn = self.get_immediate_u16();
-                    self.push_u16(self.pc);
-                    self.pc = nn;
+                    self.call();
                 }
             }
 
             0xD4 => {
                 if !self.f.contains(Flags::CARRY) {
-                    let nn = self.get_immediate_u16();
-                    self.push_u16(self.pc);
-                    self.pc = nn;
+                    self.call();
                 }
             }
 
             0xDC => {
                 if self.f.contains(Flags::CARRY) {
-                    let nn = self.get_immediate_u16();
-                    self.push_u16(self.pc);
-                    self.pc = nn;
+                    self.call();
                 }
             }
 
@@ -770,13 +877,32 @@ impl ProcessingUnit {
 
             // 3.3.11 Returns
 
-            // RET
-            0xC9 => {
-                let lsb = self.read_sp_u8() as u16;
-                let msb = self.read_sp_u8() as u16;
+            // 1. RET
+            0xC9 => self.ret(),
 
-                let dest = (msb << 8) | lsb;
-                self.pc = dest
+            // 2. RET cc
+            0xC0 => {
+                if !self.f.contains(Flags::ZERO) {
+                    self.ret();
+                }
+            }
+
+            0xC8 => {
+                if self.f.contains(Flags::ZERO) {
+                    self.ret();
+                }
+            }
+
+            0xD0 => {
+                if !self.f.contains(Flags::CARRY) {
+                    self.ret();
+                }
+            }
+
+            0xD8 => {
+                if self.f.contains(Flags::CARRY) {
+                    self.ret();
+                }
             }
 
             // 7. POP nn
@@ -809,11 +935,39 @@ impl ProcessingUnit {
         return self.lookup_op_code_for_pc(pc).1;
     }
 
+    fn call(&mut self) {
+        let nn = self.get_immediate_u16();
+        self.push_u16(self.pc);
+        self.pc = nn;
+    }
+
+    fn ret(&mut self) {
+        let lsb = self.read_sp_u8() as u16;
+        let msb = self.read_sp_u8() as u16;
+
+        let dest = (msb << 8) | lsb;
+        self.pc = dest
+    }
+
     fn set_swap_flags(&mut self, v: u8) {
         self.f.set(Flags::ZERO, v == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
         self.f.remove(Flags::C);
+    }
+
+    fn rr_n_8(&mut self, v: u8) -> u8 {
+        let carry = (v >> 6) & 0b1;
+        let v = v.rotate_right(1);
+        let bit = v & 0b1;
+        if bit == 0 {
+            self.f.insert(Flags::ZERO);
+        }
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::C, carry == 1);
+
+        v
     }
 
     fn rl_n_8(&mut self, v: u8) -> u8 {
