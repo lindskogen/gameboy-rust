@@ -47,7 +47,7 @@ fn main() {
             write_buffer_to_file(&buffer);
         }
 
-        if window.is_key_pressed(Key::Space, KeyRepeat::No) {
+        if window.is_key_down(Key::Space) {
             core.cpu.mem.gpu.debug_print();
         }
 

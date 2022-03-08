@@ -138,11 +138,6 @@ impl GPU {
         }
     }
 
-
-    fn set_stat_lyc(&mut self, value: bool) {
-        self.stat.enable_ly_interrupt = value;
-    }
-
     pub fn next(&mut self, elapsed: u32) -> bool {
         self.cycles += elapsed;
 
@@ -279,7 +274,7 @@ impl GPU {
         let mut i = 0usize;
         for y in 0..144u16 {
             for x in 0..160u16 {
-                buffer[i] = self.draw_tile_at(((x + self.scx as u16) % 160) as u8, ((y + self.scy as u16) % 144) as u8);
+                buffer[i] = self.draw_tile_at(((x + self.scx as u16) % 256) as u8, ((y + self.scy as u16) % 256) as u8);
                 if render_debug_grid && (x % 8 == 0 || y % 8 == 0) {
                     buffer[i] = buffer[i] >> 4;
                 }
@@ -289,19 +284,17 @@ impl GPU {
     }
 
     pub fn debug_print(&self) {
-        for i in 0..100 {
+        for i in 0..0x20 {
             let from = i * 0x10;
             let buffer = &self.vram[from..(from + 0x10)];
 
+            let absolute_addr = from + VRAM_BEGIN;
             if buffer.iter().any(|n| { *n != 0 }) {
-                println!("{:x}: {:02x?}", from + 0x8000, buffer);
+                println!("{:x}: {:02x?}", absolute_addr, buffer);
+            } else {
+                println!("{:x}: ", absolute_addr);
             }
         }
     }
 }
 
-
-fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
-    let (r, g, b) = (r as u32, g as u32, b as u32);
-    (r << 16) | (g << 8) | b
-}

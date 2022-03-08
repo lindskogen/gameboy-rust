@@ -1,4 +1,5 @@
 use std::ops::{BitAnd, BitOr};
+use bit_field::BitField;
 use bitflags::bitflags;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
@@ -127,14 +128,6 @@ impl ProcessingUnit {
     pub fn next(&mut self) -> u32 {
         let pc = self.pc;
         self.pc += 1;
-        // println!("{:x}", pc);
-
-        if pc == 0x100 {
-            println!("pc = 0x100");
-            self.mem.gpu.debug_print();
-            //
-            // panic!("at the disco");
-        }
 
         match self.mem.read_byte(pc) {
             // 3.3.1 8-bit loads
@@ -614,21 +607,21 @@ impl ProcessingUnit {
 
             // 1. RLCA
 
-            0x07 => {
-                self.a = self.rl_n_8(self.a);
-            }
+            // 0x07 => {
+            //     self.a = self.rlca(self.a);
+            // }
 
             // 2. RLA
-            0x17 => { self.a = self.rl_n_8(self.a); }
+            0x17 => { self.a = self.rl_8(self.a); }
 
             // 3. RRCA
-            0x0F => {
-                self.rr_n_8(self.a);
-            }
+            // 0x0F => {
+            //     self.rrca(self.a);
+            // }
 
             // 4. RRA
             0x1F => {
-                self.rr_n_8(self.a);
+                self.rr_8(self.a);
             }
 
             0xCB => {
@@ -675,49 +668,49 @@ impl ProcessingUnit {
 
 
                     // 6. RL n
-                    0x17 => { self.a = self.rl_n_8(self.a); }
-                    0x11 => { self.c = self.rl_n_8(self.c); }
-                    0x12 => { self.d = self.rl_n_8(self.d); }
-                    0x13 => { self.e = self.rl_n_8(self.e); }
-                    0x14 => { self.h = self.rl_n_8(self.h); }
-                    0x15 => { self.l = self.rl_n_8(self.l); }
+                    0x17 => { self.a = self.rl_8(self.a); }
+                    0x11 => { self.c = self.rl_8(self.c); }
+                    0x12 => { self.d = self.rl_8(self.d); }
+                    0x13 => { self.e = self.rl_8(self.e); }
+                    0x14 => { self.h = self.rl_8(self.h); }
+                    0x15 => { self.l = self.rl_8(self.l); }
                     0x16 => {
-                        let i = self.rl_n_16(self.get_hl());
+                        let i = self.rl_16(self.get_hl());
                         self.set_hl(i);
                     }
 
                     // 8. RR n
 
                     0x1F => {
-                        self.rr_n_8(self.a);
+                        self.rr_8(self.a);
                     }
 
                     0x18 => {
-                        self.rr_n_8(self.b);
+                        self.rr_8(self.b);
                     }
 
                     0x19 => {
-                        self.rr_n_8(self.c);
+                        self.rr_8(self.c);
                     }
 
                     0x1A => {
-                        self.rr_n_8(self.d);
+                        self.rr_8(self.d);
                     }
 
                     0x1B => {
-                        self.rr_n_8(self.e);
+                        self.rr_8(self.e);
                     }
 
                     0x1C => {
-                        self.rr_n_8(self.h);
+                        self.rr_8(self.h);
                     }
 
                     0x1D => {
-                        self.rr_n_8(self.l);
+                        self.rr_8(self.l);
                     }
 
                     0x1E => {
-                        self.rr_n_8(self.mem.read_byte(self.get_hl()));
+                        self.rr_8(self.mem.read_byte(self.get_hl()));
                     }
 
                     // 11. SRL n
@@ -956,9 +949,10 @@ impl ProcessingUnit {
         self.f.remove(Flags::C);
     }
 
-    fn rr_n_8(&mut self, v: u8) -> u8 {
-        let carry = (v >> 6) & 0b1;
-        let v = v.rotate_right(1);
+    fn rr_8(&mut self, v: u8) -> u8 {
+        let carry = v & 0b1;
+        let mut v = v.rotate_right(1);
+        v.set_bit(7, self.f.contains(Flags::CARRY));
         let bit = v & 0b1;
         if bit == 0 {
             self.f.insert(Flags::ZERO);
@@ -970,9 +964,10 @@ impl ProcessingUnit {
         v
     }
 
-    fn rl_n_8(&mut self, v: u8) -> u8 {
-        let carry = (v >> 6) & 0b1;
-        let v = v.rotate_left(1);
+    fn rl_8(&mut self, v: u8) -> u8 {
+        let carry = (v >> 7) & 0b1;
+        let mut v = v.rotate_left(1);
+        v.set_bit(0, self.f.contains(Flags::CARRY));
         let bit = v & 0b1;
         if bit == 0 {
             self.f.insert(Flags::ZERO);
@@ -984,7 +979,7 @@ impl ProcessingUnit {
         v
     }
 
-    fn rl_n_16(&mut self, v: u16) -> u16 {
+    fn rl_16(&mut self, v: u16) -> u16 {
         let carry = (v >> 6) & 0b1;
         let v = v.rotate_left(1);
         let bit = v & 0b1;
