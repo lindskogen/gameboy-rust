@@ -1,6 +1,9 @@
-use bitflags::bitflags;
 use std::fmt::Debug;
 use std::usize;
+
+use bitflags::bitflags;
+
+use dmg::intf::InterruptFlag;
 
 pub const VRAM_BEGIN: usize = 0x8000;
 pub const VRAM_END: usize = 0xFF6B;
@@ -108,10 +111,12 @@ pub struct GPU {
     lc: u8,
 
     cycles: u32,
+    dots: u32,
+    pub intf: InterruptFlag,
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum StatMode {
     Hblank = 0x00,
     Vblank = 0x01,
@@ -135,59 +140,69 @@ impl GPU {
             lc: 0x00,
 
             cycles: 0,
+            dots: 0,
+            intf: InterruptFlag::empty(),
         }
     }
 
     pub fn next(&mut self, elapsed: u32) -> bool {
-        self.cycles += elapsed;
-
-        if !self.lcdc.lcd_display_enable() {
+        if elapsed == 0 || !self.lcdc.lcd_display_enable() {
             return false;
         }
 
         let mut should_render = false;
 
-        let mut interrupt_vblank = false;
+        let c = (elapsed - 1) / 80 + 1;
 
-        match self.stat.mode {
-            StatMode::Hblank => {
-                if self.cycles >= 204 {
-                    self.cycles -= 204;
-                    self.ly += 1;
-                    if self.ly == 144 {
-                        self.stat.mode = StatMode::Vblank;
-                        interrupt_vblank = true;
-                        should_render = true;
-                    } else {
-                        self.stat.mode = StatMode::Oam;
-                    }
+        for i in 0..c {
+            if i == (c - 1) {
+                self.dots += elapsed % 80
+            } else {
+                self.dots += 80
+            }
+            let d = self.dots;
+            self.dots %= 456;
+            if d != self.dots {
+                self.ly = (self.ly + 1) % 154;
+                if self.stat.enable_ly_interrupt && self.ly == self.lc {
+                    self.intf.insert(InterruptFlag::LCD_STAT);
                 }
             }
-            StatMode::Vblank => {
-                if self.cycles >= 456 {
-                    self.cycles -= 456;
-                    self.ly += 1;
-                    if self.ly > 153 {
-                        self.ly = 0;
-                        self.stat.mode = StatMode::Oam;
-                    }
+            if self.ly >= 144 {
+                if self.stat.mode == StatMode::Vblank {
+                    continue;
                 }
-            }
-            StatMode::Oam => {
-                if self.cycles >= 80 {
-                    self.cycles -= 80;
-                    self.stat.mode = StatMode::Hblank;
+                self.stat.mode = StatMode::Vblank;
+                // self.v_blank = true;
+                should_render = true;
+                self.intf.insert(InterruptFlag::V_BLANK);
+                if self.stat.enable_m1_interrupt {
+                    self.intf.insert(InterruptFlag::LCD_STAT);
                 }
-            }
-            StatMode::Transfer => {
-                if self.cycles >= 172 {
-                    self.cycles -= 172;
-                    // draw scanline
-                    self.stat.mode = StatMode::Hblank;
+            } else if self.dots <= 80 {
+                if self.stat.mode == StatMode::Oam {
+                    continue;
                 }
+                self.stat.mode = StatMode::Oam;
+                if self.stat.enable_m2_interrupt {
+                    self.intf.insert(InterruptFlag::LCD_STAT);
+                }
+            } else if self.dots <= (80 + 172) {
+                self.stat.mode = StatMode::Transfer;
+            } else {
+                if self.stat.mode == StatMode::Hblank {
+                    continue;
+                }
+                self.stat.mode = StatMode::Hblank;
+                // self.h_blank = true;
+                if self.stat.enable_m0_interrupt {
+                    self.intf.insert(InterruptFlag::LCD_STAT);
+                }
+                // Render scanline
+
+                // Draw sprites
             }
         }
-
         return should_render;
     }
 
@@ -232,10 +247,25 @@ impl GPU {
         }
     }
 
-    fn draw_tile_at(&self, x: u8, y: u8) -> u32 {
+    fn get_pixel_color(&self, tile_location: u16, tile_y: u8, tile_x: u8) -> u32 {
+        let tile_y_data: [u8; 2] = {
+            let a = self.read_vram(tile_location + (tile_y as u16 * 2));
+            let b = self.read_vram(tile_location + (tile_y as u16 * 2) + 1);
+            [a, b]
+        };
+
+        // Palettes
+        let color_l = if tile_y_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
+        let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
+        let color = (color_h | color_l) as u8;
+
+        TilePixelValue::from_u8(color).to_rgb()
+    }
+
+    fn get_tile_location(&self, x: u8, y: u8) -> u16 {
         let tile_base = self.lcdc.bg_and_window_tile_data_select();
-        let tx = (u16::from(x) >> 3) & 31;
-        let ty = (u16::from(y) >> 3) & 31;
+        let tx = x as u16 / 8;
+        let ty = y as u16 / 8;
 
         let bg_base = self.lcdc.bg_tile_map_display_select();
         let title_addr = bg_base + ty * 32 + tx;
@@ -249,36 +279,34 @@ impl GPU {
         } as u16
             * 16;
 
-        let tile_location = tile_base + tile_offset;
+        tile_base + tile_offset
+    }
+
+    fn draw_tile_at(&self, x: u8, y: u8) -> u32 {
+        let tile_location = self.get_tile_location(x, y);
 
         let tile_y = y % 8;
-
-        let tile_y_data: [u8; 2] = {
-            let a = self.read_vram(tile_location + u16::from(tile_y * 2));
-            let b = self.read_vram(tile_location + u16::from(tile_y * 2) + 1);
-            [a, b]
-        };
-
         let tile_x = x % 8;
 
-        // Palettes
-        let color_l = if tile_y_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
-        let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
-        let color = (color_h | color_l) as u8;
-
-        TilePixelValue::from_u8(color).to_rgb()
+        self.get_pixel_color(tile_location, tile_y, tile_x)
     }
 
     pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        let render_debug_grid = false;
         let mut i = 0usize;
         for y in 0..144u16 {
             for x in 0..160u16 {
                 buffer[i] = self.draw_tile_at(((x + self.scx as u16) % 256) as u8, ((y + self.scy as u16) % 256) as u8);
-                if render_debug_grid && (x % 8 == 0 || y % 8 == 0) {
-                    buffer[i] = buffer[i] >> 4;
-                }
                 i += 1;
+            }
+        }
+    }
+
+    pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
+        for i in 0usize..(144 / 8) * (160 / 8) {
+            for y in 0..8 {
+                for x in 0..8 {
+                    buffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160] = self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8)
+                }
             }
         }
     }

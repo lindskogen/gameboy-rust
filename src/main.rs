@@ -1,8 +1,9 @@
 extern crate dmg;
-extern crate minifb;
 extern crate image;
+extern crate minifb;
 
 use std::env;
+use std::time::{Duration, Instant};
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
@@ -34,31 +35,45 @@ fn main() {
             panic!("{}", e);
         });
 
-
-    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    let mut prev_time = Instant::now();
+    let delta = Duration::from_micros(16600);
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        let elapsed = core.cpu.next();
-        let should_render = core.cpu.mem.gpu.next(elapsed);
+    let mut running = true;
 
-        if window.is_key_down(Key::LeftSuper) && window.is_key_pressed(Key::S, KeyRepeat::No) {
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        if running {
+            let elapsed = core.cpu.next();
+            let should_render = core.cpu.mem.gpu.next(elapsed);
+
+            if should_render {
+                core.cpu.mem.copy_vram_into_buffer(&mut buffer);
+
+
+                let current_time = Instant::now();
+                if current_time > (prev_time + delta) {
+                    prev_time = current_time;
+                    // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+                    window
+                        .update_with_buffer(&buffer, WIDTH, HEIGHT)
+                        .unwrap();
+                }
+            }
+        }
+
+        if window.is_key_down(Key::LeftSuper) && window.is_key_pressed(Key::S, KeyRepeat::Yes) {
             write_buffer_to_file(&buffer);
         }
 
-        if window.is_key_down(Key::Space) {
-            core.cpu.mem.gpu.debug_print();
+        if running && window.is_key_down(Key::P) {
+            running = false;
+            println!("Stopped");
         }
 
-        if should_render {
-            core.cpu.mem.copy_vram_into_buffer(&mut buffer);
-
-
-            // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-            window
-                .update_with_buffer(&buffer, WIDTH, HEIGHT)
-                .unwrap();
+        if !running && window.is_key_down(Key::S) {
+            running = true;
+            println!("Started");
         }
     }
 }
