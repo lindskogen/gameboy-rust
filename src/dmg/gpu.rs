@@ -44,13 +44,12 @@ enum TilePixelValue {
 }
 
 impl TilePixelValue {
-    fn from_u8(value: u8) -> TilePixelValue {
-        match value {
-            0b00 => TilePixelValue::Black,
+    fn from_palette_and_u8(palette: u8, value: u8) -> TilePixelValue {
+        match palette >> (2 * value) & 0x03 {
+            0b00 => TilePixelValue::White,
             0b01 => TilePixelValue::LightGray,
             0b10 => TilePixelValue::DarkGray,
-            0b11 => TilePixelValue::White,
-            _ => panic!("Unmapped color {:b}", value)
+            _ => TilePixelValue::Black,
         }
     }
 
@@ -60,15 +59,6 @@ impl TilePixelValue {
             TilePixelValue::LightGray => 0xff88C070,
             TilePixelValue::DarkGray => 0xff356856,
             TilePixelValue::White => 0xffE0F8D0,
-        }
-    }
-
-    fn to_unicode(&self) -> char {
-        match self {
-            TilePixelValue::Black => '▓',
-            TilePixelValue::LightGray => '░',
-            TilePixelValue::DarkGray => '▒',
-            TilePixelValue::White => ' '
         }
     }
 }
@@ -93,7 +83,7 @@ impl Stat {
             enable_m2_interrupt: false,
             enable_m1_interrupt: false,
             enable_m0_interrupt: false,
-            mode: StatMode::Hblank,
+            mode: StatMode::HBlank0,
         }
     }
 }
@@ -109,6 +99,7 @@ pub struct GPU {
     wx: u8,
     ly: u8,
     lc: u8,
+    bgp: u8,
 
     cycles: u32,
     dots: u32,
@@ -118,10 +109,10 @@ pub struct GPU {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum StatMode {
-    Hblank = 0x00,
-    Vblank = 0x01,
-    Oam = 0x02,
-    Transfer = 0x03,
+    HBlank0 = 0x00,
+    VBlank1 = 0x01,
+    OamRead2 = 0x02,
+    Transfer3 = 0x03,
 }
 
 
@@ -138,6 +129,7 @@ impl GPU {
             wy: 0x00,
             ly: 0x00,
             lc: 0x00,
+            bgp: 0x00,
 
             cycles: 0,
             dots: 0,
@@ -145,62 +137,73 @@ impl GPU {
         }
     }
 
-    pub fn next(&mut self, elapsed: u32) -> bool {
+    pub fn next(&mut self, elapsed: u32, buffer: &mut Vec<u32>) -> bool {
         if elapsed == 0 || !self.lcdc.lcd_display_enable() {
             return false;
         }
 
+        self.cycles += elapsed;
+
         let mut should_render = false;
 
-        let c = (elapsed - 1) / 80 + 1;
-
-        for i in 0..c {
-            if i == (c - 1) {
-                self.dots += elapsed % 80
-            } else {
-                self.dots += 80
-            }
-            let d = self.dots;
-            self.dots %= 456;
-            if d != self.dots {
-                self.ly = (self.ly + 1) % 154;
-                if self.stat.enable_ly_interrupt && self.ly == self.lc {
-                    self.intf.insert(InterruptFlag::LCD_STAT);
+        match self.stat.mode {
+            StatMode::OamRead2 => {
+                if self.cycles >= 80 {
+                    self.cycles = 80;
+                    self.stat.mode = StatMode::Transfer3;
                 }
             }
-            if self.ly >= 144 {
-                if self.stat.mode == StatMode::Vblank {
-                    continue;
+            StatMode::Transfer3 => {
+                if self.cycles >= 172 {
+                    self.cycles = 0;
+                    self.stat.mode = StatMode::HBlank0;
+                    if self.stat.enable_m0_interrupt {
+                        self.intf.insert(InterruptFlag::LCD_STAT);
+                    }
+                    self.render_line_into_buffer(buffer);
                 }
-                self.stat.mode = StatMode::Vblank;
-                // self.v_blank = true;
-                should_render = true;
-                self.intf.insert(InterruptFlag::V_BLANK);
-                if self.stat.enable_m1_interrupt {
-                    self.intf.insert(InterruptFlag::LCD_STAT);
-                }
-            } else if self.dots <= 80 {
-                if self.stat.mode == StatMode::Oam {
-                    continue;
-                }
-                self.stat.mode = StatMode::Oam;
-                if self.stat.enable_m2_interrupt {
-                    self.intf.insert(InterruptFlag::LCD_STAT);
-                }
-            } else if self.dots <= (80 + 172) {
-                self.stat.mode = StatMode::Transfer;
-            } else {
-                if self.stat.mode == StatMode::Hblank {
-                    continue;
-                }
-                self.stat.mode = StatMode::Hblank;
-                // self.h_blank = true;
-                if self.stat.enable_m0_interrupt {
-                    self.intf.insert(InterruptFlag::LCD_STAT);
-                }
-                // Render scanline
+            }
+            StatMode::HBlank0 => {
+                if self.cycles >= 204 {
+                    self.cycles = 0;
+                    self.ly += 1;
 
-                // Draw sprites
+                    if self.stat.enable_ly_interrupt && self.ly == self.lc {
+                        self.intf.insert(InterruptFlag::LCD_STAT);
+                    }
+
+                    if self.ly == 143 {
+                        self.stat.mode = StatMode::VBlank1;
+                        self.intf.insert(InterruptFlag::V_BLANK);
+                        if self.stat.enable_m1_interrupt {
+                            self.intf.insert(InterruptFlag::LCD_STAT);
+                        }
+                        should_render = true;
+                    } else {
+                        self.stat.mode = StatMode::OamRead2;
+                        if self.stat.enable_m2_interrupt {
+                            self.intf.insert(InterruptFlag::LCD_STAT);
+                        }
+                    }
+                }
+            }
+            StatMode::VBlank1 => {
+                if self.cycles >= 456 {
+                    self.cycles = 0;
+                    self.ly += 1;
+
+                    if self.stat.enable_ly_interrupt && self.ly == self.lc {
+                        self.intf.insert(InterruptFlag::LCD_STAT);
+                    }
+
+                    if self.ly > 153 {
+                        self.stat.mode = StatMode::OamRead2;
+                        if self.stat.enable_m2_interrupt {
+                            self.intf.insert(InterruptFlag::LCD_STAT);
+                        }
+                        self.ly = 0;
+                    }
+                }
             }
         }
         return should_render;
@@ -222,6 +225,7 @@ impl GPU {
             0xff43 => self.scx,
             0xff44 => self.ly,
             0xff45 => self.lc,
+            0xff47 => self.bgp,
             0xff4a => self.wx,
             0xff4b => self.wy,
             _ => self.vram[address as usize - VRAM_BEGIN]
@@ -241,6 +245,7 @@ impl GPU {
             0xff43 => self.scx = value,
             0xff44 => self.ly = value,
             0xff45 => self.lc = value,
+            0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
@@ -259,7 +264,7 @@ impl GPU {
         let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
         let color = (color_h | color_l) as u8;
 
-        TilePixelValue::from_u8(color).to_rgb()
+        TilePixelValue::from_palette_and_u8(self.bgp, color).to_rgb()
     }
 
     fn get_tile_location(&self, x: u8, y: u8) -> u16 {
@@ -291,13 +296,11 @@ impl GPU {
         self.get_pixel_color(tile_location, tile_y, tile_x)
     }
 
-    pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        let mut i = 0usize;
-        for y in 0..144u16 {
-            for x in 0..160u16 {
-                buffer[i] = self.draw_tile_at(((x + self.scx as u16) % 256) as u8, ((y + self.scy as u16) % 256) as u8);
-                i += 1;
-            }
+    fn render_line_into_buffer(&self, buffer: &mut Vec<u32>) {
+        let y = self.ly as u16;
+
+        for x in 0..160u16 {
+            buffer[y as usize * 160 + x as usize] = self.draw_tile_at(((x + self.scx as u16) % 256) as u8, ((y + self.scy as u16) % 256) as u8);
         }
     }
 

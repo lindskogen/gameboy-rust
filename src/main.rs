@@ -45,12 +45,9 @@ fn main() {
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if running {
             let elapsed = core.cpu.next();
-            let should_render = core.cpu.mem.gpu.next(elapsed);
+            let should_render = core.cpu.mem.gpu.next(elapsed, &mut buffer);
 
             if should_render {
-                core.cpu.mem.copy_vram_into_buffer(&mut buffer);
-
-
                 let current_time = Instant::now();
                 if current_time > (prev_time + delta) {
                     prev_time = current_time;

@@ -84,10 +84,6 @@ impl MemoryBus {
         }
     }
 
-    pub fn copy_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        self.gpu.copy_vram_into_buffer(buffer);
-    }
-
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
         self.gpu.debug_vram_into_buffer(buffer);
     }

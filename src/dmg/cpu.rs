@@ -157,10 +157,13 @@ impl ProcessingUnit {
 
         let pc = self.pc;
 
+
         if pc == 0x100 {
             self.enable_debugging = true;
+        }
+
+        if !(0x293..=0x295).contains(&pc) {
             self.debug_print(pc);
-            panic!("the disco");
         }
 
 
@@ -780,6 +783,19 @@ impl ProcessingUnit {
                     // 3.3.7. Bit Opcodes
 
 
+                    // BIT 0, A
+                    0x47 => {
+                        self.f.set(Flags::ZERO, !self.a.get_bit(0));
+                        self.f.remove(Flags::N);
+                        self.f.insert(Flags::H);
+                    }
+                    // BIT 3, A
+                    0x5f => {
+                        self.f.set(Flags::ZERO, !self.a.get_bit(3));
+                        self.f.remove(Flags::N);
+                        self.f.insert(Flags::H);
+                    }
+
                     // BIT 7, H
                     0x7c => {
                         self.f.set(Flags::ZERO, !self.h.get_bit(7));
@@ -1150,7 +1166,7 @@ impl ProcessingUnit {
 
     fn set_half_carry(&mut self, prev: u8, n: u8) {
         // H: Set if no borrow from bit 4
-        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1))
+        self.f.set(Flags::H, (prev & 0xf0) != (n & 0xf0))
     }
 
     fn dec_flags_16(&mut self, prev: u16, n: u16) {
@@ -1161,26 +1177,26 @@ impl ProcessingUnit {
         self.f.set(Flags::H, prev.leading_zeros() >= 12);
     }
     fn compare_a_with(&mut self, n: u8) {
-        let nn = self.a.wrapping_sub(n);
+        let (nn, overflow) = self.a.overflowing_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.insert(Flags::N);
         self.set_half_carry(n, nn);
-        self.f.set(Flags::CARRY, self.a < n);
+        self.f.set(Flags::CARRY, overflow);
     }
     fn sub_a(&mut self, n: u8) {
-        let nn = self.a.wrapping_sub(n);
+        let (nn, overflow) = self.a.overflowing_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.insert(Flags::N);
         self.set_half_carry(n, nn);
-        self.f.set(Flags::CARRY, self.a < n);
+        self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
     fn add_a(&mut self, n: u8) {
-        let nn = self.a.wrapping_add(n);
+        let (nn, overflow) = self.a.overflowing_add(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.remove(Flags::N);
         self.set_half_carry(n, nn);
-        self.f.set(Flags::CARRY, self.a < n);
+        self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
     fn and(&mut self, n: u8) {
