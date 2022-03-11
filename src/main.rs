@@ -40,6 +40,20 @@ fn main() {
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
+
+
+    let mut title = String::new();
+    for i in 0x134..0x143 {
+        let i1 = core.cpu.mem.read_byte(i);
+        if i1 == 0 {
+            break;
+        }
+
+        title += &(i1 as char).to_string();
+    }
+
+    window.set_title(&title);
+
     let mut running = true;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
