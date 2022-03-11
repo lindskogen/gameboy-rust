@@ -104,6 +104,7 @@ pub struct GPU {
     cycles: u32,
     dots: u32,
     pub intf: InterruptFlag,
+    pub interrupts_enabled: InterruptFlag,
 }
 
 #[repr(u8)]
@@ -134,6 +135,7 @@ impl GPU {
             cycles: 0,
             dots: 0,
             intf: InterruptFlag::empty(),
+            interrupts_enabled: InterruptFlag::empty(),
         }
     }
 
@@ -174,7 +176,9 @@ impl GPU {
 
                     if self.ly == 143 {
                         self.stat.mode = StatMode::VBlank1;
-                        self.intf.insert(InterruptFlag::V_BLANK);
+                        if self.interrupts_enabled.contains(InterruptFlag::V_BLANK) {
+                            self.intf.insert(InterruptFlag::V_BLANK);
+                        }
                         if self.stat.enable_m1_interrupt {
                             self.intf.insert(InterruptFlag::LCD_STAT);
                         }
@@ -228,6 +232,8 @@ impl GPU {
             0xff47 => self.bgp,
             0xff4a => self.wx,
             0xff4b => self.wy,
+            0xff0f => self.intf.bits(),
+            0xffff => self.interrupts_enabled.bits(),
             _ => self.vram[address as usize - VRAM_BEGIN]
         }
     }
@@ -248,6 +254,10 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
+            0xff0f => self.intf = InterruptFlag::from_bits_truncate(value),
+            0xffff => {
+                self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
+            }
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
         }
     }

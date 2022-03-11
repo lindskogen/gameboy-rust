@@ -32,7 +32,6 @@ pub struct ProcessingUnit {
     sp: u16,
 
     master_interrupt_enabled: bool,
-    interrupts_enabled: InterruptFlag,
 
     pub mem: MemoryBus,
 
@@ -56,7 +55,6 @@ impl ProcessingUnit {
             pc: 0x0,
             sp: 0xFFFE,
             master_interrupt_enabled: false,
-            interrupts_enabled: InterruptFlag::empty(),
             mem,
 
             enable_debugging: false,
@@ -119,10 +117,6 @@ impl ProcessingUnit {
 
     fn write_byte(&mut self, addr: u16, value: u8) {
         match addr {
-            0xffff => {
-                self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
-                // println!("{:08x} enable interrupt: {:?}", self.pc, self.interrupts_enabled);
-            }
             _ => self.mem.write_byte(addr, value)
         }
     }
@@ -158,13 +152,13 @@ impl ProcessingUnit {
         let pc = self.pc;
 
 
-        if pc == 0x100 {
-            self.enable_debugging = true;
-        }
-
-        if !(0x293..=0x295).contains(&pc) {
-            self.debug_print(pc);
-        }
+        // if pc == 0x100 {
+        //     self.enable_debugging = true;
+        // }
+        //
+        // if !(0x293..=0x295).contains(&pc) {
+        //     self.debug_print(pc);
+        // }
 
 
         // 0x2817 is tetris-specific
@@ -647,6 +641,7 @@ impl ProcessingUnit {
 
             // 10. EI
             0xfb => {
+                println!("EI");
                 self.master_interrupt_enabled = true;
             }
 
@@ -942,6 +937,7 @@ impl ProcessingUnit {
             // 3. RETI
 
             0xD9 => {
+                println!("RETI");
                 self.ret();
                 self.master_interrupt_enabled = true;
             }
@@ -1001,20 +997,14 @@ impl ProcessingUnit {
         //     }
         // }
 
-        if self.master_interrupt_enabled && self.interrupts_enabled.intersects(self.mem.gpu.intf) {
+        if self.master_interrupt_enabled && self.mem.gpu.interrupts_enabled.intersects(self.mem.gpu.intf) {
             if let Some(addr) = self.mem.gpu.intf.interrupt_starting_address() {
                 self.master_interrupt_enabled = false;
-
-                // println!("Triggered {:?}", self.mem.gpu.intf);
-
                 let triggered = self.mem.gpu.intf.highest_prio_bit();
 
-                let triggered_interrupt = self.mem.gpu.intf.bits();
-                let n = triggered_interrupt.trailing_zeros();
-                let triggered_interrupt = triggered_interrupt & !(1 << n);
-                self.mem.gpu.intf.remove(triggered);
-                self.write_byte(0xff0f, triggered_interrupt);
+                println!("Handle interrupt {:?}", triggered);
 
+                self.mem.gpu.intf.remove(triggered);
                 self.push_u16(self.pc);
                 self.pc = addr;
             }

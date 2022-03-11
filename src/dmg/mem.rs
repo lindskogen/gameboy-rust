@@ -57,6 +57,7 @@ impl MemoryBus {
                 self.memory[address] = value
             }
             VRAM_BEGIN..=VRAM_END => self.gpu.write_vram(addr, value),
+            0xffff => self.gpu.write_vram(addr, value),
             _ => self.memory[address] = value
         }
     }
@@ -66,6 +67,7 @@ impl MemoryBus {
 
         match address {
             VRAM_BEGIN..=VRAM_END => self.gpu.read_vram(addr),
+            0xffff => self.gpu.read_vram(addr),
             0..=ROM_BEGIN if self.cartridge_loaded => {
                 if let Some(ref rom) = self.rom {
                     rom[address]
