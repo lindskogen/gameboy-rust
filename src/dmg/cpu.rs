@@ -1,8 +1,10 @@
 use std::ops::{BitAnd, BitOr};
+
 use bit_field::BitField;
 use bitflags::bitflags;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+use dmg::intf::InterruptFlag;
 
 use super::mem::MemoryBus;
 
@@ -11,10 +13,8 @@ bitflags! {
         const ZERO = 0b10000000;
         const N = 0b01000000;
         const H = 0b00100000;
-        const HALF_CARRY = 0b00100000;
-        const C = 0b00010000;
         const CARRY = 0b00010000;
-        const F = Self::ZERO.bits | Self::N.bits | Self::H.bits | Self::C.bits;
+        const F = Self::ZERO.bits | Self::N.bits | Self::H.bits | Self::CARRY.bits;
     }
 }
 
@@ -30,8 +30,15 @@ pub struct ProcessingUnit {
     l: u8,
     pc: u16,
     sp: u16,
-    interrupts_enabled: bool,
+
+    master_interrupt_enabled: bool,
+    interrupts_enabled: InterruptFlag,
+
     pub mem: MemoryBus,
+
+    enable_debugging: bool,
+
+    cycles: u32,
 }
 
 
@@ -48,9 +55,13 @@ impl ProcessingUnit {
             l: 0,
             pc: 0x0,
             sp: 0xFFFE,
-            interrupts_enabled: true,
+            master_interrupt_enabled: false,
+            interrupts_enabled: InterruptFlag::empty(),
             mem,
 
+            enable_debugging: false,
+
+            cycles: 0,
         }
     }
 
@@ -83,13 +94,13 @@ impl ProcessingUnit {
     }
 
     fn get_immediate_u8(&mut self) -> u8 {
-        let v = self.mem.read_byte(self.pc);
+        let v = self.read_byte(self.pc);
         self.pc += 1;
         v
     }
 
     fn get_immediate_i8(&mut self) -> i8 {
-        let v = self.mem.read_byte(self.pc) as i8;
+        let v = self.read_byte(self.pc) as i8;
         self.pc += 1;
         v
     }
@@ -101,35 +112,73 @@ impl ProcessingUnit {
     }
 
     fn get_immediate_u16_tuple(&mut self) -> (u8, u8) {
-        let v = (self.mem.read_byte(self.pc + 1), self.mem.read_byte(self.pc));
+        let v = (self.read_byte(self.pc + 1), self.read_byte(self.pc));
         self.pc += 2;
         v
     }
 
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        match addr {
+            0xffff => {
+                self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
+                // println!("{:08x} enable interrupt: {:?}", self.pc, self.interrupts_enabled);
+            }
+            _ => self.mem.write_byte(addr, value)
+        }
+    }
+
+    fn read_byte(&self, addr: u16) -> u8 {
+        self.mem.read_byte(addr)
+    }
+
     pub fn debug_print(&self, pc: u16) {
-        if pc < 0x100 {
+        if !self.enable_debugging {
             return;
         }
 
         let op_code = self.lookup_op_code_for_pc(pc).0;
 
 
-        println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
+        // Logging registers in pairs like bgb
+        // println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
+        println!("{:5x}: {:<10}\taf: {:04x}, bc: {:04x}, de: {:04x}, hl: {:04x}, sp: {:4x}, flags: {:?}", pc, op_code, self.get_af(), self.get_bc(), self.get_de(), self.get_hl(), self.sp, self.f)
     }
 
     fn lookup_op_code_for_pc(&self, pc: u16) -> (&str, u32) {
-        if self.mem.read_byte(pc) != 0xCB {
-            lookup_op_code(self.mem.read_byte(pc))
+        if self.read_byte(pc) != 0xCB {
+            lookup_op_code(self.read_byte(pc))
         } else {
-            lookup_cb_prefix_op_code(self.mem.read_byte(pc))
+            lookup_cb_prefix_op_code(self.read_byte(pc + 1))
         }
     }
 
     pub fn next(&mut self) -> u32 {
+        self.check_and_execute_interrupts();
+
         let pc = self.pc;
+
+        if pc == 0x100 {
+            self.enable_debugging = true;
+            self.debug_print(pc);
+            panic!("the disco");
+        }
+
+
+        // 0x2817 is tetris-specific
+        if pc == 0x2817 {
+            println!("start of load titles fn");
+            self.enable_debugging = true;
+        }
+
+        if pc == 0x282a {
+            self.enable_debugging = true;
+            self.mem.gpu.debug_print();
+            panic!("end of load titles fn");
+        }
+
         self.pc += 1;
 
-        match self.mem.read_byte(pc) {
+        match self.read_byte(pc) {
             // 3.3.1 8-bit loads
             // 1. LD nn,n
             0x06 => {
@@ -166,12 +215,12 @@ impl ProcessingUnit {
             0x7C => self.ld_a(self.h),
             0x7D => self.ld_a(self.l),
 
-            0x0A => self.ld_a(self.mem.read_byte(self.get_bc())),
-            0x1A => self.ld_a(self.mem.read_byte(self.get_de())),
-            0x7E => self.ld_a(self.mem.read_byte(self.get_hl())),
+            0x0A => self.ld_a(self.read_byte(self.get_bc())),
+            0x1A => self.ld_a(self.read_byte(self.get_de())),
+            0x7E => self.ld_a(self.read_byte(self.get_hl())),
             0xFA => {
                 let v = self.get_immediate_u16();
-                self.ld_a(self.mem.read_byte(v));
+                self.ld_a(self.read_byte(v));
             }
             0x3E => {
                 let v = self.get_immediate_u8();
@@ -184,7 +233,7 @@ impl ProcessingUnit {
             0x43 => self.ld_b(self.e),
             0x44 => self.ld_b(self.h),
             0x45 => self.ld_b(self.l),
-            0x46 => self.ld_b(self.mem.read_byte(self.get_hl())),
+            0x46 => self.ld_b(self.read_byte(self.get_hl())),
 
             0x48 => self.ld_c(self.b),
             0x49 => self.ld_c(self.c),
@@ -192,7 +241,7 @@ impl ProcessingUnit {
             0x4B => self.ld_c(self.e),
             0x4C => self.ld_c(self.h),
             0x4D => self.ld_c(self.l),
-            0x4E => self.ld_c(self.mem.read_byte(self.get_hl())),
+            0x4E => self.ld_c(self.read_byte(self.get_hl())),
 
             0x50 => self.ld_d(self.b),
             0x51 => self.ld_d(self.c),
@@ -200,7 +249,7 @@ impl ProcessingUnit {
             0x53 => self.ld_d(self.e),
             0x54 => self.ld_d(self.h),
             0x55 => self.ld_d(self.l),
-            0x56 => self.ld_d(self.mem.read_byte(self.get_hl())),
+            0x56 => self.ld_d(self.read_byte(self.get_hl())),
 
             0x58 => self.ld_e(self.b),
             0x59 => self.ld_e(self.c),
@@ -208,7 +257,7 @@ impl ProcessingUnit {
             0x5B => self.ld_e(self.e),
             0x5C => self.ld_e(self.h),
             0x5D => self.ld_e(self.l),
-            0x5E => self.ld_e(self.mem.read_byte(self.get_hl())),
+            0x5E => self.ld_e(self.read_byte(self.get_hl())),
 
             0x60 => self.ld_h(self.b),
             0x61 => self.ld_h(self.c),
@@ -216,7 +265,7 @@ impl ProcessingUnit {
             0x63 => self.ld_h(self.e),
             0x64 => self.ld_h(self.h),
             0x65 => self.ld_h(self.l),
-            0x66 => self.ld_h(self.mem.read_byte(self.get_hl())),
+            0x66 => self.ld_h(self.read_byte(self.get_hl())),
 
             0x68 => self.ld_l(self.b),
             0x69 => self.ld_l(self.c),
@@ -224,7 +273,7 @@ impl ProcessingUnit {
             0x6B => self.ld_l(self.e),
             0x6C => self.ld_l(self.h),
             0x6D => self.ld_l(self.l),
-            0x6E => self.ld_l(self.mem.read_byte(self.get_hl())),
+            0x6E => self.ld_l(self.read_byte(self.get_hl())),
 
             0x70 => self.ld_hl(self.b),
             0x71 => self.ld_hl(self.c),
@@ -245,30 +294,30 @@ impl ProcessingUnit {
             0x5F => self.ld_e(self.a),
             0x67 => self.ld_h(self.a),
             0x6F => self.ld_l(self.a),
-            0x02 => self.mem.write_byte(self.get_bc(), self.a),
-            0x12 => self.mem.write_byte(self.get_de(), self.a),
-            0x77 => self.mem.write_byte(self.get_hl(), self.a),
+            0x02 => self.write_byte(self.get_bc(), self.a),
+            0x12 => self.write_byte(self.get_de(), self.a),
+            0x77 => self.write_byte(self.get_hl(), self.a),
             0xEA => {
                 let addr = self.get_immediate_u16();
-                self.mem.write_byte(addr, self.a)
+                self.write_byte(addr, self.a)
             }
 
             // 5. LD A, (C)
             0xF2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
 
-                self.a = self.mem.read_byte(addr);
+                self.a = self.read_byte(addr);
             }
 
             // 6. LD (C), A
             0xE2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
-                self.mem.write_byte(addr, self.a);
+                self.write_byte(addr, self.a);
             }
 
             // 10, 11, 12: LDD (HL), A
             0x32 => {
-                self.mem.write_byte(self.get_hl(), self.a);
+                self.write_byte(self.get_hl(), self.a);
                 let v = self.get_hl().wrapping_sub(1);
                 self.set_hl(v);
             }
@@ -276,7 +325,7 @@ impl ProcessingUnit {
             // 13, 14, 15: LD A, (HLI)
 
             0x2a => {
-                self.a = self.mem.read_byte(self.get_hl());
+                self.a = self.read_byte(self.get_hl());
                 let v = self.get_hl().wrapping_add(1);
                 self.set_hl(v);
             }
@@ -295,15 +344,14 @@ impl ProcessingUnit {
             0xe0 => {
                 let n = self.get_immediate_u8();
                 let addr: u16 = 0xff00 + (n as u16);
-                self.mem.write_byte(addr, self.a);
+                self.write_byte(addr, self.a);
             }
 
             // 20. LDH A, (n)
             0xF0 => {
                 let n = self.get_immediate_u8();
                 let addr: u16 = 0xff00 + (n as u16);
-                // println!("Load {:x} from {:x} into A", self.mem.read_byte(addr), addr);
-                self.a = self.mem.read_byte(addr);
+                self.a = self.read_byte(addr);
             }
 
             // 3.3.2 16-bit loads
@@ -343,8 +391,8 @@ impl ProcessingUnit {
             0x08 => {
                 let addr = self.get_immediate_u16();
                 let (sp1, sp2) = ((self.sp & 0xff00 >> 8) as u8, (self.sp & 0xff) as u8);
-                self.mem.write_byte(addr, sp1);
-                self.mem.write_byte(addr + 1, sp2);
+                self.write_byte(addr, sp1);
+                self.write_byte(addr + 1, sp2);
             }
 
             // 6. PUSH nn
@@ -364,7 +412,7 @@ impl ProcessingUnit {
             0x83 => self.add_a(self.e),
             0x84 => self.add_a(self.h),
             0x85 => self.add_a(self.l),
-            0x86 => self.add_a(self.mem.read_byte(self.get_hl())),
+            0x86 => self.add_a(self.read_byte(self.get_hl())),
             0xc6 => {
                 let n = self.get_immediate_u8();
                 self.add_a(n)
@@ -379,7 +427,7 @@ impl ProcessingUnit {
             0x8B => self.adc(self.e),
             0x8C => self.adc(self.h),
             0x8D => self.adc(self.l),
-            0x8E => self.adc(self.mem.read_byte(self.get_hl())),
+            0x8E => self.adc(self.read_byte(self.get_hl())),
             0xCE => {
                 let n = self.get_immediate_u8();
                 self.adc(n)
@@ -395,7 +443,7 @@ impl ProcessingUnit {
             0x93 => self.sub_a(self.e),
             0x94 => self.sub_a(self.h),
             0x95 => self.sub_a(self.l),
-            0x96 => self.sub_a(self.mem.read_byte(self.get_hl())),
+            0x96 => self.sub_a(self.read_byte(self.get_hl())),
             0xD6 => {
                 let n = self.get_immediate_u8();
                 self.sub_a(n)
@@ -409,7 +457,7 @@ impl ProcessingUnit {
             0xa3 => self.and(self.e),
             0xa4 => self.and(self.h),
             0xa5 => self.and(self.l),
-            0xa6 => self.and(self.mem.read_byte(self.get_hl())),
+            0xa6 => self.and(self.read_byte(self.get_hl())),
             0xe6 => {
                 let param = self.get_immediate_u8();
                 self.and(param)
@@ -423,7 +471,7 @@ impl ProcessingUnit {
             0xb3 => self.or(self.e),
             0xb4 => self.or(self.h),
             0xb5 => self.or(self.l),
-            0xb6 => self.or(self.mem.read_byte(self.get_hl())),
+            0xb6 => self.or(self.read_byte(self.get_hl())),
             0xf6 => {
                 let param = self.get_immediate_u8();
                 self.or(param)
@@ -438,7 +486,7 @@ impl ProcessingUnit {
             0xAB => self.xor(self.e),
             0xAC => self.xor(self.h),
             0xAD => self.xor(self.l),
-            0xAE => self.xor(self.mem.read_byte(self.get_hl())),
+            0xAE => self.xor(self.read_byte(self.get_hl())),
             0xEE => {
                 let param = self.get_immediate_u8();
                 self.xor(param)
@@ -452,7 +500,7 @@ impl ProcessingUnit {
             0xBA => { self.compare_a_with(self.d) }
             0xBC => { self.compare_a_with(self.h) }
             0xBD => { self.compare_a_with(self.l) }
-            0xBE => { self.compare_a_with(self.mem.read_byte(self.get_hl())) }
+            0xBE => { self.compare_a_with(self.read_byte(self.get_hl())) }
             0xFE => {
                 let param = self.get_immediate_u8();
                 self.compare_a_with(param)
@@ -502,11 +550,11 @@ impl ProcessingUnit {
                 self.reset_and_set_carry_zero(l, self.l);
             }
             0x34 => {
-                let n = self.mem.read_byte(self.get_hl());
-                let nn = n + 1;
+                let n = self.read_byte(self.get_hl());
+                let nn = n.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(n, nn);
-                self.mem.write_byte(self.get_hl(), nn);
+                self.write_byte(self.get_hl(), nn);
             }
 
             // 10. DEC n
@@ -556,13 +604,10 @@ impl ProcessingUnit {
             // 3.3.4 16-bit Arithmetic
 
             // 1. ADD HL,n
-            0x29 => {
-                let (new_hl, overflow) = self.get_hl().overflowing_add(self.get_hl());
-                self.f.remove(Flags::N);
-                // TODO - half carry
-                self.f.set(Flags::CARRY, overflow);
-                self.set_hl(new_hl);
-            }
+            0x09 => self.add_hl_16(self.get_bc()),
+            0x19 => self.add_hl_16(self.get_de()),
+            0x29 => self.add_hl_16(self.get_hl()),
+            0x39 => self.add_hl_16(self.sp),
 
             // 3. INC nn
 
@@ -594,12 +639,12 @@ impl ProcessingUnit {
             // 9. DI
 
             0xf3 => {
-                self.interrupts_enabled = false;
+                self.master_interrupt_enabled = false;
             }
 
             // 10. EI
             0xfb => {
-                self.interrupts_enabled = true;
+                self.master_interrupt_enabled = true;
             }
 
 
@@ -627,8 +672,7 @@ impl ProcessingUnit {
             0xCB => {
                 let npc = pc + 1;
                 self.pc += 1;
-                let bitinstruction = self.mem.read_byte(npc).to_le();
-                match bitinstruction {
+                match self.read_byte(npc) {
 
 
                     // 1. SWAP n
@@ -661,8 +705,8 @@ impl ProcessingUnit {
                         self.set_swap_flags(self.l);
                     }
                     0x36 => {
-                        let nn = self.mem.read_byte(self.get_hl()).swap_bytes();
-                        self.mem.write_byte(self.get_hl(), nn);
+                        let nn = self.read_byte(self.get_hl()).swap_bytes();
+                        self.write_byte(self.get_hl(), nn);
                         self.set_swap_flags(nn);
                     }
 
@@ -710,7 +754,7 @@ impl ProcessingUnit {
                     }
 
                     0x1E => {
-                        self.rr_8(self.mem.read_byte(self.get_hl()));
+                        self.rr_8(self.read_byte(self.get_hl()));
                     }
 
                     // 11. SRL n
@@ -735,16 +779,15 @@ impl ProcessingUnit {
 
                     // 3.3.7. Bit Opcodes
 
+
+                    // BIT 7, H
                     0x7c => {
-                        let bit = (self.h >> 6) & 0b1;
-                        if bit == 0 {
-                            self.f.insert(Flags::ZERO);
-                        }
+                        self.f.set(Flags::ZERO, !self.h.get_bit(7));
                         self.f.remove(Flags::N);
                         self.f.insert(Flags::H);
                     }
                     _ => {
-                        println!("Unimplemented under 0xCB at pc={:x}, op={:x}: {}", npc, self.mem.read_byte(npc), lookup_cb_prefix_op_code(self.mem.read_byte(npc)).0);
+                        println!("Unimplemented under 0xCB at pc={:x}, op={:x}: {}", npc, self.read_byte(npc), lookup_cb_prefix_op_code(self.read_byte(npc)).0);
                         println!("{:?}", self);
                         unimplemented!()
                     }
@@ -880,6 +923,13 @@ impl ProcessingUnit {
                 }
             }
 
+            // 3. RETI
+
+            0xD9 => {
+                self.ret();
+                self.master_interrupt_enabled = true;
+            }
+
             0xC8 => {
                 if self.f.contains(Flags::ZERO) {
                     self.ret();
@@ -917,15 +967,50 @@ impl ProcessingUnit {
             }
 
             _ => {
-                println!("Unimplemented at pc={:x}, op={:x}: {}", pc, self.mem.read_byte(pc), lookup_op_code(self.mem.read_byte(pc)).0);
+                println!("Unimplemented at pc={:x}, op={:x}: {}", pc, self.read_byte(pc), lookup_op_code(self.read_byte(pc)).0);
                 println!("{:?}", self);
                 unimplemented!()
             }
         }
 
-        self.debug_print(pc);
+        let cycles = self.lookup_op_code_for_pc(pc).1;
+        self.cycles = self.cycles.wrapping_add(cycles);
+        return cycles;
+    }
 
-        return self.lookup_op_code_for_pc(pc).1;
+    fn check_and_execute_interrupts(&mut self) {
+        // if let Some(count) = self.serial_countdown {
+        //     if count >= self.cycles {
+        //         self.mem.gpu.intf.insert(InterruptFlag::SERIAL);
+        //     }
+        // }
+
+        if self.master_interrupt_enabled && self.interrupts_enabled.intersects(self.mem.gpu.intf) {
+            if let Some(addr) = self.mem.gpu.intf.interrupt_starting_address() {
+                self.master_interrupt_enabled = false;
+
+                // println!("Triggered {:?}", self.mem.gpu.intf);
+
+                let triggered = self.mem.gpu.intf.highest_prio_bit();
+
+                let triggered_interrupt = self.mem.gpu.intf.bits();
+                let n = triggered_interrupt.trailing_zeros();
+                let triggered_interrupt = triggered_interrupt & !(1 << n);
+                self.mem.gpu.intf.remove(triggered);
+                self.write_byte(0xff0f, triggered_interrupt);
+
+                self.push_u16(self.pc);
+                self.pc = addr;
+            }
+        }
+    }
+
+    fn add_hl_16(&mut self, hl: u16) {
+        let (new_hl, overflow) = self.get_hl().overflowing_add(hl);
+        self.f.remove(Flags::N);
+        // TODO - half carry
+        self.f.set(Flags::CARRY, overflow);
+        self.set_hl(new_hl);
     }
 
     fn call(&mut self) {
@@ -946,49 +1031,45 @@ impl ProcessingUnit {
         self.f.set(Flags::ZERO, v == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
-        self.f.remove(Flags::C);
+        self.f.remove(Flags::CARRY);
     }
 
     fn rr_8(&mut self, v: u8) -> u8 {
-        let carry = v & 0b1;
-        let mut v = v.rotate_right(1);
+        let carry = v.get_bit(0);
+        let mut v = v >> 1;
         v.set_bit(7, self.f.contains(Flags::CARRY));
-        let bit = v & 0b1;
-        if bit == 0 {
-            self.f.insert(Flags::ZERO);
-        }
+
+        self.f.set(Flags::ZERO, v == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
-        self.f.set(Flags::C, carry == 1);
+        self.f.set(Flags::CARRY, carry);
 
         v
     }
 
     fn rl_8(&mut self, v: u8) -> u8 {
-        let carry = (v >> 7) & 0b1;
-        let mut v = v.rotate_left(1);
+        let carry = v.get_bit(7);
+        let mut v = v << 1;
         v.set_bit(0, self.f.contains(Flags::CARRY));
-        let bit = v & 0b1;
-        if bit == 0 {
-            self.f.insert(Flags::ZERO);
-        }
+
+
+        self.f.set(Flags::ZERO, v == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
-        self.f.set(Flags::C, carry == 1);
+        self.f.set(Flags::CARRY, carry);
 
         v
     }
 
     fn rl_16(&mut self, v: u16) -> u16 {
-        let carry = (v >> 6) & 0b1;
-        let v = v.rotate_left(1);
-        let bit = v & 0b1;
-        if bit == 0 {
-            self.f.insert(Flags::ZERO);
-        }
+        let carry = v.get_bit(15);
+        let mut v = v << 1;
+        v.set_bit(0, self.f.contains(Flags::CARRY));
+
+        self.f.set(Flags::ZERO, v == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
-        self.f.set(Flags::C, carry == 1);
+        self.f.set(Flags::CARRY, carry);
 
         v
     }
@@ -1001,7 +1082,7 @@ impl ProcessingUnit {
 
     fn push_u8(&mut self, n: u8) {
         self.sp = self.sp.wrapping_sub(1);
-        self.mem.write_byte(self.sp, n);
+        self.write_byte(self.sp, n);
     }
 
     fn push_u16(&mut self, n: u16) {
@@ -1012,7 +1093,7 @@ impl ProcessingUnit {
 
     fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
         self.f.set(Flags::ZERO, new == 0);
-        self.f.set(Flags::HALF_CARRY, (((prev & 0xf) + 1) & 0x10) == 0x10);
+        self.f.set(Flags::H, (((prev & 0xf) + 1) & 0x10) == 0x10);
         self.f.remove(Flags::N);
     }
 
@@ -1050,12 +1131,12 @@ impl ProcessingUnit {
     }
 
     fn ld_hl(&mut self, n: u8) {
-        self.mem.write_byte(self.get_hl(), n);
+        self.write_byte(self.get_hl(), n);
     }
 
 
     fn read_sp_u8(&mut self) -> u8 {
-        let x = self.mem.read_byte(self.sp);
+        let x = self.read_byte(self.sp);
         self.sp = self.sp.wrapping_add(1);
 
         return x;
@@ -1064,7 +1145,7 @@ impl ProcessingUnit {
     fn dec_flags(&mut self, prev: u8, n: u8) {
         self.f.set(Flags::ZERO, n == 0);
         self.f.insert(Flags::N);
-        self.set_half_carry(prev, n);
+        self.f.set(Flags::H, (prev & 0xf0) != (n & 0xf0));
     }
 
     fn set_half_carry(&mut self, prev: u8, n: u8) {
@@ -1076,8 +1157,8 @@ impl ProcessingUnit {
         self.f.set(Flags::ZERO, n == 0);
         self.f.insert(Flags::N);
 
-        // H: Set if no borrow from bit 4
-        self.f.set(Flags::H, ((prev >> 4) & 0b1) == ((n >> 4) & 0b1));
+        // H: Set if no borrow from bit 8??
+        self.f.set(Flags::H, prev.leading_zeros() >= 12);
     }
     fn compare_a_with(&mut self, n: u8) {
         let nn = self.a.wrapping_sub(n);

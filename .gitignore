@@ -5,3 +5,5 @@ Cargo.lock
 *.bin
 *.asm
 *.gb
+*.log
+cpu_instrs/

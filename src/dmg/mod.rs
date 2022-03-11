@@ -1,7 +1,8 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use dmg::mem::{ROM_END, ROM_SIZE, RomBuffer};
+
+use dmg::mem::{ROM_END, RomBuffer};
 
 use self::cpu::ProcessingUnit;
 use self::mem::MemoryBus;
@@ -10,6 +11,7 @@ mod cpu;
 mod gpu;
 mod mem;
 mod debug;
+mod intf;
 
 pub struct Core {
     pub cpu: ProcessingUnit,
