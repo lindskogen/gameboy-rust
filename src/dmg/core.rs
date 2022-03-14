@@ -14,10 +14,10 @@ pub struct Core {
 
 
 fn read_rom_file(filename: &str) -> io::Result<RomBuffer> {
-    let mut buffer = [0; ROM_END];
+    let mut buffer = vec![];
     let mut f = File::open(filename)?;
 
-    f.read(&mut buffer)?;
+    f.read_to_end(&mut buffer)?;
 
     Ok(buffer)
 }
