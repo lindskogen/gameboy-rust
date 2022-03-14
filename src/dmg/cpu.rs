@@ -1,4 +1,5 @@
 use std::cell::{RefCell, RefMut};
+use std::io::{stdout, Write};
 use std::ops::{BitAnd, BitOr};
 use std::rc::Rc;
 
@@ -123,7 +124,10 @@ impl ProcessingUnit {
         }
 
         match addr {
-            0xff01 => print!("{}", value as char),
+            0xff01 => {
+                print!("{}", value as char);
+                stdout().flush().expect("No flush?");
+            },
             _ => {
                 self.bus.borrow_mut().write_byte(addr, value)
             }
