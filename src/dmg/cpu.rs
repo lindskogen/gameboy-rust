@@ -123,6 +123,7 @@ impl ProcessingUnit {
         }
 
         match addr {
+            0xff01 => print!("{}", value as char),
             _ => {
                 self.bus.borrow_mut().write_byte(addr, value)
             }
