@@ -41,6 +41,10 @@ fn main() {
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
 
+    let cartridge_type = core.get_cartridge_type();
+
+    println!("Cartridge type: {:?}", cartridge_type);
+
 
 
     let title = core.read_rom_name();

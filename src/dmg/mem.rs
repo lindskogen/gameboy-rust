@@ -11,6 +11,7 @@
 use std::fmt;
 
 use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
+use std::convert::TryFrom;
 
 const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;
@@ -24,6 +25,7 @@ pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
     rom: Option<RomBuffer>,
     boot_rom_disabled: bool,
+    mbc: MBC,
     pub ppu: GPU,
 }
 
@@ -32,6 +34,7 @@ impl Default for MemoryBus {
         MemoryBus {
             memory: [0x00; MEM_SIZE],
             rom: None,
+            mbc: MBC::default(),
             ppu: GPU::new(),
             boot_rom_disabled: false,
         }
@@ -44,7 +47,14 @@ impl MemoryBus {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        MemoryBus { memory, rom, ppu: GPU::new(), boot_rom_disabled: false }
+        let mbc = rom.and_then(|rom| MBC::try_from(rom[0x147]).ok()).unwrap_or_default();
+
+        match mbc {
+            MBC::NoMBC => {}
+            _ => panic!("No support for cartridge type: {:?}", mbc)
+        }
+
+        MemoryBus { memory, rom, mbc, ppu: GPU::new(), boot_rom_disabled: false }
     }
 
     pub fn write_byte(&mut self, addr: u16, value: u8) {
@@ -68,31 +78,64 @@ impl MemoryBus {
         match address {
             VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
             0xffff => self.ppu.read_vram(addr),
-            0..=ROM_BEGIN if self.boot_rom_disabled => {
-                if let Some(ref rom) = self.rom {
-                    rom[address]
-                } else {
-                    self.memory[address]
-                }
-            }
-            ROM_BEGIN..=ROM_END => {
-                if let Some(ref rom) = self.rom {
-                    rom[address]
-                } else {
-                    self.memory[address]
-                }
-            }
+            0..=ROM_BEGIN if self.boot_rom_disabled => self.read_rom_with_ram_fallback(address),
+            ROM_BEGIN..=ROM_END => self.read_rom_with_ram_fallback(address),
             _ => self.memory[address]
+        }
+    }
+
+    fn read_rom_with_ram_fallback(&self, address: usize) -> u8 {
+        match self.rom {
+            Some(ref rom) => {
+                rom[address]
+            }
+            None => {
+                self.memory[address]
+            }
         }
     }
 
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
         self.ppu.debug_vram_into_buffer(buffer);
     }
+
+    pub fn get_cartridge_type(&self) -> MBC {
+        self.mbc
+    }
 }
 
 impl fmt::Debug for MemoryBus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Bootloader: {:02x?}", &self.memory[..256])
+    }
+}
+
+
+
+#[derive(Debug, Copy, Clone)]
+pub enum MBC {
+    NoMBC = 0x00,
+    MBC1 = 0x01,
+    Mbc1ExternalRam = 0x02,
+    Mbc1BatteryExternalRam = 0x03,
+}
+
+impl Default for MBC {
+    fn default() -> Self {
+        MBC::NoMBC
+    }
+}
+
+impl TryFrom<u8> for MBC {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(MBC::NoMBC),
+            0x01 => Ok(MBC::MBC1),
+            0x02 => Ok(MBC::Mbc1ExternalRam),
+            0x03 => Ok(MBC::Mbc1BatteryExternalRam),
+            _ => Err(())
+        }
     }
 }
