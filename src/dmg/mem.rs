@@ -11,7 +11,7 @@
 use std::fmt;
 
 use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;
@@ -47,7 +47,7 @@ impl MemoryBus {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        let mbc = rom.and_then(|rom| MBC::try_from(rom[0x147]).ok()).unwrap_or_default();
+        let mbc = rom.and_then(|rom| rom[0x147].try_into().ok()).unwrap_or_default();
 
         match mbc {
             MBC::NoMBC => {}
@@ -109,7 +109,6 @@ impl fmt::Debug for MemoryBus {
         write!(f, "Bootloader: {:02x?}", &self.memory[..256])
     }
 }
-
 
 
 #[derive(Debug, Copy, Clone)]
