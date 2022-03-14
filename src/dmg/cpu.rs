@@ -464,6 +464,16 @@ impl ProcessingUnit {
                 self.sub_a(n)
             }
 
+            // 4. SBC A, n
+            0x9f => self.sbc(self.a),
+            0x98 => self.sbc(self.b),
+            0x99 => self.sbc(self.c),
+            0x9a => self.sbc(self.d),
+            0x9b => self.sbc(self.e),
+            0x9c => self.sbc(self.h),
+            0x9d => self.sbc(self.l),
+            0x9e => self.sbc(self.read_byte(self.get_hl())),
+
             // 5. AND n
             0xa7 => self.and(self.a),
             0xa0 => self.and(self.b),
@@ -646,6 +656,20 @@ impl ProcessingUnit {
 
                 self.f.insert(Flags::N);
                 self.f.insert(Flags::H);
+            }
+
+            // 4. CCF
+            0x3f => {
+                self.f.remove(Flags::N);
+                self.f.remove(Flags::H);
+                self.f.toggle(Flags::CARRY);
+            }
+
+            // 5. SCF
+            0x37 => {
+                self.f.remove(Flags::N);
+                self.f.remove(Flags::H);
+                self.f.insert(Flags::CARRY);
             }
 
             // 6. NOP
@@ -1255,14 +1279,26 @@ impl ProcessingUnit {
         self.pc = addr;
     }
     fn adc(&mut self, n: u8) {
-        let a = self.a;
         let (aa, overflow) = self.a.overflowing_add(n + if self.f.contains(Flags::CARRY) { 1 } else { 0 });
 
         self.f.set(Flags::ZERO, aa == 0);
         self.f.remove(Flags::N);
-        self.set_half_carry(a, aa);
+        self.set_half_carry(self.a, aa);
         self.f.set(Flags::CARRY, overflow);
 
         self.a = aa;
+    }
+
+    fn sbc(&mut self, n: u8) {
+        let (aa, overflow) = self.a.overflowing_sub(n + if self.f.contains(Flags::CARRY) { 1 } else { 0 });
+
+
+        self.f.set(Flags::ZERO, aa == 0);
+        self.f.remove(Flags::N);
+        self.set_half_carry(self.a, aa);
+        self.f.set(Flags::CARRY, overflow);
+
+        self.a = aa;
+
     }
 }
