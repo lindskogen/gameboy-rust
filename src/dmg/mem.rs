@@ -12,6 +12,7 @@ use std::fmt;
 
 use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
 use std::convert::{TryFrom, TryInto};
+use dmg::intf::InterruptFlag;
 
 const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;
@@ -19,14 +20,18 @@ pub const ROM_END: usize = 0x7fff;
 
 const MEM_SIZE: usize = 0xffff + 1;
 
-pub type RomBuffer = [u8; ROM_END];
+pub type RomBuffer = Vec<u8>;
 
 pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
     rom: Option<RomBuffer>,
     boot_rom_disabled: bool,
-    mbc: MBC,
+    mbc_mode: MBC,
+    mbc1_params: MBC1Params,
+    rom_offset: usize,
+    ram_offset: usize,
     pub ppu: GPU,
+    pub interrupts_enabled: InterruptFlag,
 }
 
 impl Default for MemoryBus {
@@ -34,9 +39,13 @@ impl Default for MemoryBus {
         MemoryBus {
             memory: [0x00; MEM_SIZE],
             rom: None,
-            mbc: MBC::default(),
+            mbc_mode: MBC::default(),
+            mbc1_params: MBC1Params::default(),
             ppu: GPU::new(),
             boot_rom_disabled: false,
+            rom_offset: 0,
+            ram_offset: 0,
+            interrupts_enabled: InterruptFlag::empty(),
         }
     }
 }
@@ -47,27 +56,81 @@ impl MemoryBus {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        let mbc = rom.and_then(|rom| rom[0x147].try_into().ok()).unwrap_or_default();
+        let mbc = rom.as_ref().and_then(|rom| rom[0x147].try_into().ok()).unwrap_or_default();
 
         match mbc {
-            MBC::NoMBC => {}
+            MBC::NoMBC | MBC::MBC1 => {}
             _ => panic!("No support for cartridge type: {:?}", mbc)
         }
 
-        MemoryBus { memory, rom, mbc, ppu: GPU::new(), boot_rom_disabled: false }
+        let ram_size = rom.as_ref().map(|rom| rom[0x0149]).unwrap_or(0u8);
+        println!("RAM size: {}", ram_size);
+
+        MemoryBus {
+            memory,
+            rom,
+            mbc_mode: mbc,
+            mbc1_params: MBC1Params::default(),
+            rom_offset: 0,
+            ram_offset: 0,
+            ppu: GPU::new(),
+            interrupts_enabled: InterruptFlag::empty(),
+            boot_rom_disabled: false,
+        }
     }
 
     pub fn write_byte(&mut self, addr: u16, value: u8) {
         let address = addr as usize;
 
         match address {
-            0xff50 => { self.boot_rom_disabled = value == 1; }
+            0x0000..=0x1fff => {
+                match self.mbc_mode {
+                    MBC::NoMBC => {}
+                    MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                        self.mbc1_params.ram_on = (value & 0x0F) == 0x0A;
+                    }
+                    _ => {}
+                }
+            }
+            0x2000..=0x3fff => {
+                match self.mbc_mode {
+                    MBC::NoMBC | MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                        let value = value & 0x1f;
+                        let value = if value == 0 { 1 } else { value };
+                        self.mbc1_params.rom_bank = (self.mbc1_params.rom_bank & 0x60) + value as u16;
+                        self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
+                    }
+                    _ => {}
+                }
+            }
+            0x4000..=0x5fff => {
+                match self.mbc1_params.mode {
+                    MBC1Mode::RamMode => {
+                        self.mbc1_params.ram_bank = value as u16 & 3;
+                        self.ram_offset = self.mbc1_params.ram_bank as usize * 0x2000;
+                    }
+                    MBC1Mode::RomMode => {
+                        self.mbc1_params.rom_bank = (self.mbc1_params.rom_bank & 0x1f) + ((value as u16 & 3) << 5);
+                        self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
+                    }
+                }
+            }
+            0x6000..=0x7fff => {
+                match self.mbc_mode {
+                    MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                        self.mbc1_params.mode = if value & 1 == 1 { MBC1Mode::RamMode } else { MBC1Mode::RomMode };
+                    }
+                    _ => {}
+                }
+            }
+            // TODO: handle write to external RAM.
             0xff07 => {
                 // println!("Timer Control: {:b}", value);
                 self.memory[address] = value
             }
             VRAM_BEGIN..=VRAM_END => self.ppu.write_vram(addr, value),
-            0xffff => self.ppu.write_vram(addr, value),
+            0xff50 => { self.boot_rom_disabled = value == 1; }
+            0xffff => self.interrupts_enabled = InterruptFlag::from_bits_truncate(value),
             _ => self.memory[address] = value
         }
     }
@@ -77,7 +140,7 @@ impl MemoryBus {
 
         match address {
             VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
-            0xffff => self.ppu.read_vram(addr),
+            0xffff => self.interrupts_enabled.bits(),
             0..=ROM_BEGIN if self.boot_rom_disabled => self.read_rom_with_ram_fallback(address),
             ROM_BEGIN..=ROM_END => self.read_rom_with_ram_fallback(address),
             _ => self.memory[address]
@@ -87,20 +150,26 @@ impl MemoryBus {
     fn read_rom_with_ram_fallback(&self, address: usize) -> u8 {
         match self.rom {
             Some(ref rom) => {
-                rom[address]
+                self.read_rom(rom, address)
             }
             None => {
                 self.memory[address]
             }
         }
     }
+    fn read_rom(&self, rom: &RomBuffer, address: usize) -> u8 {
+        match address {
+            0x4000..=0x7fff => {
+                rom[self.rom_offset + (address & 0x3fff)]
+            }
+            _ => rom[address]
+
+            // TODO: handle external RAM
+        }
+    }
 
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
         self.ppu.debug_vram_into_buffer(buffer);
-    }
-
-    pub fn get_cartridge_type(&self) -> MBC {
-        self.mbc
     }
 }
 
@@ -110,13 +179,42 @@ impl fmt::Debug for MemoryBus {
     }
 }
 
+enum MBC1Mode {
+    RomMode,
+    RamMode,
+}
+
+struct MBC1Params {
+    // Selected ROM bank
+    rom_bank: u16,
+
+    // Selected RAM bank
+    ram_bank: u16,
+
+    // RAM enable switch
+    ram_on: bool,
+
+    // ROM/RAM expansion mode
+    mode: MBC1Mode,
+}
+
+impl Default for MBC1Params {
+    fn default() -> Self {
+        Self {
+            ram_on: false,
+            rom_bank: 0x0000,
+            ram_bank: 0x0000,
+            mode: MBC1Mode::RomMode,
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
-pub enum MBC {
-    NoMBC = 0x00,
-    MBC1 = 0x01,
-    Mbc1ExternalRam = 0x02,
-    Mbc1BatteryExternalRam = 0x03,
+enum MBC {
+    NoMBC,
+    MBC1,
+    Mbc1ExternalRam,
+    Mbc1BatteryExternalRam,
 }
 
 impl Default for MBC {

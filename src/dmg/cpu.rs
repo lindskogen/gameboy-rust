@@ -1015,7 +1015,7 @@ impl ProcessingUnit {
 
 
 
-        if self.master_interrupt_enabled && self.bus.borrow().ppu.interrupts_enabled.intersects(self.bus.borrow().ppu.intf) {
+        if self.master_interrupt_enabled && self.bus.borrow().interrupts_enabled.intersects(self.bus.borrow().ppu.intf) {
             let interrupt_flags = self.bus.borrow().ppu.intf;
             if let Some(addr) = interrupt_flags.interrupt_starting_address() {
                 self.master_interrupt_enabled = false;

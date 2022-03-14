@@ -5,7 +5,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 use dmg::cpu::ProcessingUnit;
-use dmg::mem::{MBC, MemoryBus, ROM_END, RomBuffer};
+use dmg::mem::{MemoryBus, ROM_END, RomBuffer};
 
 pub struct Core {
     bus: Rc<RefCell<MemoryBus>>,
@@ -64,9 +64,5 @@ impl Core {
         }
 
         title
-    }
-
-    pub fn get_cartridge_type(&self) -> MBC {
-        self.bus.borrow().get_cartridge_type()
     }
 }
