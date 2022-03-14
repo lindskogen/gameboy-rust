@@ -1,9 +1,12 @@
+use std::cell::RefCell;
 use std::fmt::Debug;
+use std::rc::Rc;
 use std::usize;
 
 use bitflags::bitflags;
 
 use dmg::intf::InterruptFlag;
+use dmg::mem::MemoryBus;
 
 pub const VRAM_BEGIN: usize = 0x8000;
 pub const VRAM_END: usize = 0xFF6B;

@@ -1,7 +1,10 @@
+use std::cell::{RefCell, RefMut};
 use std::ops::{BitAnd, BitOr};
+use std::rc::Rc;
 
 use bit_field::BitField;
 use bitflags::bitflags;
+use dmg::core::Core;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 use dmg::intf::InterruptFlag;
@@ -31,10 +34,9 @@ pub struct ProcessingUnit {
     pc: u16,
     sp: u16,
 
+    bus: Rc<RefCell<MemoryBus>>,
+
     master_interrupt_enabled: bool,
-
-    pub mem: MemoryBus,
-
     enable_debugging: bool,
 
     cycles: u32,
@@ -42,7 +44,7 @@ pub struct ProcessingUnit {
 
 
 impl ProcessingUnit {
-    pub fn new(mem: MemoryBus) -> ProcessingUnit {
+    pub fn new(bus: Rc<RefCell<MemoryBus>>) -> ProcessingUnit {
         ProcessingUnit {
             a: 0,
             b: 0,
@@ -55,7 +57,7 @@ impl ProcessingUnit {
             pc: 0x0,
             sp: 0xFFFE,
             master_interrupt_enabled: false,
-            mem,
+            bus,
 
             enable_debugging: false,
 
@@ -116,13 +118,28 @@ impl ProcessingUnit {
     }
 
     fn write_byte(&mut self, addr: u16, value: u8) {
+        if addr == 0xff00 {
+            println!("Write {:04x} {:x}", addr, value);
+        }
+
         match addr {
-            _ => self.mem.write_byte(addr, value)
+            _ => {
+                self.bus.borrow_mut().write_byte(addr, value)
+            }
         }
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
-        self.mem.read_byte(addr)
+        match addr {
+            0xff00 => self.read_joypad(),
+            _ => self.bus.borrow().read_byte(addr)
+        }
+    }
+
+
+    fn read_joypad(&self) -> u8 {
+        // TODO: right now joypad is hard-coded to no buttons pressed
+        0x0f
     }
 
     pub fn debug_print(&self, pc: u16) {
@@ -162,16 +179,16 @@ impl ProcessingUnit {
 
 
         // 0x2817 is tetris-specific
-        if pc == 0x2817 {
-            println!("start of load titles fn");
-            self.enable_debugging = true;
-        }
-
-        if pc == 0x282a {
-            self.enable_debugging = true;
-            self.mem.gpu.debug_print();
-            panic!("end of load titles fn");
-        }
+        // if pc == 0x2817 {
+        //     println!("start of load titles fn");
+        //     self.enable_debugging = true;
+        // }
+        //
+        // if pc == 0x282a {
+        //     self.enable_debugging = true;
+        //     self.mem.gpu.debug_print();
+        //     panic!("end of load titles fn");
+        // }
 
         self.pc += 1;
 
@@ -641,7 +658,6 @@ impl ProcessingUnit {
 
             // 10. EI
             0xfb => {
-                println!("EI");
                 self.master_interrupt_enabled = true;
             }
 
@@ -650,17 +666,17 @@ impl ProcessingUnit {
 
             // 1. RLCA
 
-            // 0x07 => {
-            //     self.a = self.rlca(self.a);
-            // }
+            0x07 => {
+                self.a = self.rlca_8(self.a);
+            }
 
             // 2. RLA
             0x17 => { self.a = self.rl_8(self.a); }
 
             // 3. RRCA
-            // 0x0F => {
-            //     self.rrca(self.a);
-            // }
+            0x0F => {
+                self.rrca_8(self.a);
+            }
 
             // 4. RRA
             0x1F => {
@@ -937,7 +953,6 @@ impl ProcessingUnit {
             // 3. RETI
 
             0xD9 => {
-                println!("RETI");
                 self.ret();
                 self.master_interrupt_enabled = true;
             }
@@ -997,14 +1012,18 @@ impl ProcessingUnit {
         //     }
         // }
 
-        if self.master_interrupt_enabled && self.mem.gpu.interrupts_enabled.intersects(self.mem.gpu.intf) {
-            if let Some(addr) = self.mem.gpu.intf.interrupt_starting_address() {
+
+
+        if self.master_interrupt_enabled && self.bus.borrow().ppu.interrupts_enabled.intersects(self.bus.borrow().ppu.intf) {
+            let interrupt_flags = self.bus.borrow().ppu.intf;
+            if let Some(addr) = interrupt_flags.interrupt_starting_address() {
                 self.master_interrupt_enabled = false;
-                let triggered = self.mem.gpu.intf.highest_prio_bit();
+                let triggered = interrupt_flags.highest_prio_bit();
 
-                println!("Handle interrupt {:?}", triggered);
-
-                self.mem.gpu.intf.remove(triggered);
+                // println!("Handle interrupt {:?}", triggered);
+                {
+                    self.bus.borrow_mut().ppu.intf.remove(triggered);
+                }
                 self.push_u16(self.pc);
                 self.pc = addr;
             }
@@ -1053,10 +1072,37 @@ impl ProcessingUnit {
         v
     }
 
+    fn rrca_8(&mut self, v: u8) -> u8 {
+        let carry = v.get_bit(0);
+        let mut v = v >> 1;
+        v.set_bit(7, carry);
+
+        self.f.set(Flags::ZERO, v == 0);
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::CARRY, carry);
+
+        v
+    }
+
     fn rl_8(&mut self, v: u8) -> u8 {
         let carry = v.get_bit(7);
         let mut v = v << 1;
         v.set_bit(0, self.f.contains(Flags::CARRY));
+
+
+        self.f.set(Flags::ZERO, v == 0);
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::CARRY, carry);
+
+        v
+    }
+
+    fn rlca_8(&mut self, v: u8) -> u8 {
+        let carry = v.get_bit(7);
+        let mut v = v << 1;
+        v.set_bit(0, carry);
 
 
         self.f.set(Flags::ZERO, v == 0);

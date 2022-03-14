@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
-use dmg::dmg::Core;
+use dmg::dmg::core::Core;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -42,15 +42,8 @@ fn main() {
 
 
 
-    let mut title = String::new();
-    for i in 0x134..0x143 {
-        let i1 = core.cpu.mem.read_byte(i);
-        if i1 == 0 {
-            break;
-        }
 
-        title += &(i1 as char).to_string();
-    }
+    let title = core.read_rom_name();
 
     window.set_title(&title);
 
@@ -58,8 +51,7 @@ fn main() {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if running {
-            let elapsed = core.cpu.next();
-            let should_render = core.cpu.mem.gpu.next(elapsed, &mut buffer);
+            let should_render = core.step(&mut buffer);
 
             if should_render {
                 let current_time = Instant::now();

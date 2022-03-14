@@ -23,8 +23,8 @@ pub type RomBuffer = [u8; ROM_END];
 pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
     rom: Option<RomBuffer>,
-    cartridge_loaded: bool,
-    pub gpu: GPU,
+    boot_rom_disabled: bool,
+    pub ppu: GPU,
 }
 
 impl Default for MemoryBus {
@@ -32,8 +32,8 @@ impl Default for MemoryBus {
         MemoryBus {
             memory: [0x00; MEM_SIZE],
             rom: None,
-            cartridge_loaded: false,
-            gpu: GPU::new(),
+            ppu: GPU::new(),
+            boot_rom_disabled: false,
         }
     }
 }
@@ -44,20 +44,20 @@ impl MemoryBus {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        MemoryBus { memory, rom, gpu: GPU::new(), cartridge_loaded: false }
+        MemoryBus { memory, rom, ppu: GPU::new(), boot_rom_disabled: false }
     }
 
     pub fn write_byte(&mut self, addr: u16, value: u8) {
         let address = addr as usize;
 
         match address {
-            0xff50 => { self.cartridge_loaded = value == 1; }
+            0xff50 => { self.boot_rom_disabled = value == 1; }
             0xff07 => {
                 // println!("Timer Control: {:b}", value);
                 self.memory[address] = value
             }
-            VRAM_BEGIN..=VRAM_END => self.gpu.write_vram(addr, value),
-            0xffff => self.gpu.write_vram(addr, value),
+            VRAM_BEGIN..=VRAM_END => self.ppu.write_vram(addr, value),
+            0xffff => self.ppu.write_vram(addr, value),
             _ => self.memory[address] = value
         }
     }
@@ -66,9 +66,9 @@ impl MemoryBus {
         let address = addr as usize;
 
         match address {
-            VRAM_BEGIN..=VRAM_END => self.gpu.read_vram(addr),
-            0xffff => self.gpu.read_vram(addr),
-            0..=ROM_BEGIN if self.cartridge_loaded => {
+            VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
+            0xffff => self.ppu.read_vram(addr),
+            0..=ROM_BEGIN if self.boot_rom_disabled => {
                 if let Some(ref rom) = self.rom {
                     rom[address]
                 } else {
@@ -87,7 +87,7 @@ impl MemoryBus {
     }
 
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        self.gpu.debug_vram_into_buffer(buffer);
+        self.ppu.debug_vram_into_buffer(buffer);
     }
 }
 
