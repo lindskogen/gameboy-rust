@@ -248,6 +248,21 @@ impl ProcessingUnit {
         self.set_hl(new_hl);
     }
 
+    fn lda_hli(&mut self) {
+        let hl = self.get_hl();
+        self.a = self.read_byte(hl);
+
+        self.set_hl(hl.wrapping_add(1));
+    }
+
+    fn ldi_hla(&mut self) {
+        self.ld_hl(self.a);
+
+        let n = self.get_hl();
+        let nn = n.wrapping_add(1);
+        self.set_hl(nn)
+    }
+
     fn call(&mut self) {
         let nn = self.get_immediate_u16();
         self.push_u16(self.pc);
@@ -409,19 +424,21 @@ impl ProcessingUnit {
     }
 
     fn and(&mut self, n: u8) {
-        let nn = self.a.bitand(n);
-        self.f.set(Flags::ZERO, nn == 0);
+        let r = self.a.bitand(n);
+        self.f.set(Flags::ZERO, r == 0);
         self.f.remove(Flags::N);
         self.f.insert(Flags::H);
         self.f.remove(Flags::CARRY);
+        self.a = r;
     }
 
     fn or(&mut self, n: u8) {
-        let nn = self.a.bitor(n);
-        self.f.set(Flags::ZERO, nn == 0);
+        let r = self.a.bitor(n);
+        self.f.set(Flags::ZERO, r == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
         self.f.remove(Flags::CARRY);
+        self.a = r;
     }
 
     fn rst(&mut self, pc: u16, addr: u16) {
@@ -549,5 +566,152 @@ mod tests {
         assert!(cpu.f.contains(Flags::H));
         assert!(!cpu.f.contains(Flags::N));
         assert!(cpu.f.contains(Flags::CARRY));
+    }
+
+    // LDI
+
+    fn setup_cpu_for_ldi() -> ProcessingUnit {
+        let bootloader = [0x56u8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.f = Flags::empty();
+        cpu.set_hl(0x0ff);
+
+        cpu
+    }
+
+    #[test]
+    fn ldi_a_works() {
+        let mut cpu = setup_cpu_for_ldi();
+
+        cpu.lda_hli();
+
+
+        assert_eq!(cpu.a, 0x56);
+        assert_eq!(cpu.get_hl(), 0x100);
+    }
+
+    // LDI
+
+    fn setup_cpu_for_ldi_hla() -> ProcessingUnit {
+        let bootloader = [0x56u8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.a = 0x56;
+        cpu.f = Flags::empty();
+        cpu.set_hl(0x67);
+
+        cpu
+    }
+
+    #[test]
+    fn ldi_hla_works() {
+        let mut cpu = setup_cpu_for_ldi_hla();
+
+        cpu.ldi_hla();
+
+
+        assert_eq!(cpu.read_byte(cpu.get_hl()), 0x56);
+        assert_eq!(cpu.get_hl(), 0x68);
+    }
+
+    // XOR
+
+    fn setup_cpu_for_xor() -> ProcessingUnit {
+        let bootloader = [0x8au8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.a = 0xff;
+        cpu.f = Flags::empty();
+        cpu.set_hl(0x10);
+
+        cpu
+    }
+
+
+    #[test]
+    fn xor_a_works() {
+        let mut cpu = setup_cpu_for_xor();
+
+        cpu.xor(cpu.a);
+
+
+        assert_eq!(cpu.a, 0x00);
+
+        assert!(cpu.f.contains(Flags::ZERO));
+    }
+
+    #[test]
+    fn xor_0f_works() {
+        let mut cpu = setup_cpu_for_xor();
+
+        cpu.xor(0x0f);
+
+
+        assert_eq!(cpu.a, 0xf0);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+    }
+
+    #[test]
+    fn xor_hl_works() {
+        let mut cpu = setup_cpu_for_xor();
+
+        cpu.xor(cpu.read_byte(cpu.get_hl()));
+
+
+        assert_eq!(cpu.a, 0x75);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+    }
+
+
+    // OR
+
+    fn setup_cpu_for_or() -> ProcessingUnit {
+        let bootloader = [0x0fu8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.a = 0x5a;
+        cpu.f = Flags::empty();
+        cpu.set_hl(0x10);
+
+        cpu
+    }
+
+    #[test]
+    fn or_a_works() {
+        let mut cpu = setup_cpu_for_or();
+
+        cpu.or(cpu.a);
+
+
+        assert_eq!(cpu.a, 0x5a);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+    }
+
+    #[test]
+    fn or_3_works() {
+        let mut cpu = setup_cpu_for_or();
+
+        cpu.or(3);
+
+
+        assert_eq!(cpu.a, 0x5b);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+    }
+
+    #[test]
+    fn or_hl_works() {
+        let mut cpu = setup_cpu_for_or();
+
+        cpu.or(cpu.read_byte(cpu.get_hl()));
+
+
+        assert_eq!(cpu.a, 0x5f);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
     }
 }

@@ -160,19 +160,13 @@ impl ProcessingUnit {
             // 13, 14, 15: LD A, (HLI)
 
             0x2a => {
-                self.a = self.read_byte(self.get_hl());
-                let v = self.get_hl().wrapping_add(1);
-                self.set_hl(v);
+                self.lda_hli();
             }
 
             // 16, 17, 18: LDI (HL), A
 
             0x22 => {
-                self.ld_hl(self.a);
-
-                let n = self.get_hl();
-                let nn = n.wrapping_add(1);
-                self.set_hl(nn)
+                self.ldi_hla()
             }
 
             // 19. LDH (n), A
