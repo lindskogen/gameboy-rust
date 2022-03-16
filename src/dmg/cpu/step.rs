@@ -152,9 +152,9 @@ impl ProcessingUnit {
 
             // 10, 11, 12: LDD (HL), A
             0x32 => {
-                self.write_byte(self.get_hl(), self.a);
-                let v = self.get_hl().wrapping_sub(1);
-                self.set_hl(v);
+                let hl = self.get_hl();
+                self.write_byte(hl, self.a);
+                self.set_hl(hl.wrapping_sub(1));
             }
 
             // 13, 14, 15: LD A, (HLI)
@@ -395,11 +395,12 @@ impl ProcessingUnit {
                 self.reset_and_set_carry_zero(l, self.l);
             }
             0x34 => {
-                let n = self.read_byte(self.get_hl());
+                let hl = self.get_hl();
+                let n = self.read_byte(hl);
                 let nn = n.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(n, nn);
-                self.write_byte(self.get_hl(), nn);
+                self.write_byte(hl, nn);
             }
 
             // 10. DEC n
@@ -440,9 +441,11 @@ impl ProcessingUnit {
                 self.dec_flags(prev, self.l);
             }
             0x35 => {
-                let prev = self.get_hl();
-                self.set_hl(prev.wrapping_sub(1));
-                self.dec_flags_16(prev, self.get_hl());
+                let hl = self.get_hl();
+                let prev = self.read_byte(hl);
+                let r = prev.wrapping_sub(1);
+                self.write_byte(hl, r);
+                self.dec_flags(prev, r);
             }
 
 
@@ -536,62 +539,83 @@ impl ProcessingUnit {
 
                     // 1. SWAP n
                     0x37 => {
-                        self.a = self.a.swap_bytes();
-                        self.set_swap_flags(self.a);
+                        self.a = self.swap(self.a);
                     }
                     0x30 => {
-                        self.b = self.b.swap_bytes();
-                        self.set_swap_flags(self.b);
+                        self.b = self.swap(self.b)
                     }
                     0x31 => {
-                        self.c = self.c.swap_bytes();
-                        self.set_swap_flags(self.c);
+                        self.c = self.swap(self.c);
                     }
                     0x32 => {
-                        self.d = self.d.swap_bytes();
-                        self.set_swap_flags(self.d);
+                        self.d = self.swap(self.d);
                     }
                     0x33 => {
-                        self.e = self.e.swap_bytes();
-                        self.set_swap_flags(self.e);
+                        self.e = self.swap(self.e);
                     }
                     0x34 => {
-                        self.h = self.h.swap_bytes();
-                        self.set_swap_flags(self.h);
+                        self.h = self.swap(self.h);
                     }
                     0x35 => {
-                        self.l = self.l.swap_bytes();
-                        self.set_swap_flags(self.l);
+                        self.l = self.swap(self.l);
                     }
                     0x36 => {
-                        let nn = self.read_byte(self.get_hl()).swap_bytes();
-                        self.write_byte(self.get_hl(), nn);
-                        self.set_swap_flags(nn);
+                        let hl = self.get_hl();
+                        let r = self.swap(self.read_byte(hl));
+                        self.write_byte(hl, r);
                     }
 
 
                     // 6. RL n
                     0x17 => self.a = self.rl_8(self.a),
+                    0x10 => self.b = self.rl_8(self.b),
                     0x11 => self.c = self.rl_8(self.c),
                     0x12 => self.d = self.rl_8(self.d),
                     0x13 => self.e = self.rl_8(self.e),
                     0x14 => self.h = self.rl_8(self.h),
                     0x15 => self.l = self.rl_8(self.l),
                     0x16 => {
-                        let i = self.rl_16(self.get_hl());
-                        self.set_hl(i);
+                        let hl = self.get_hl();
+                        let r = self.rl_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
                     }
 
                     // 8. RR n
 
-                    0x1F => self.rr_8(self.a),
-                    0x18 => self.rr_8(self.b),
-                    0x19 => self.rr_8(self.c),
-                    0x1A => self.rr_8(self.d),
-                    0x1B => self.rr_8(self.e),
-                    0x1C => self.rr_8(self.h),
-                    0x1D => self.rr_8(self.l),
-                    0x1E => self.rr_8(self.read_byte(self.get_hl())),
+                    0x1F => {
+                        self.a = self.rr_8(self.a);
+                    }
+
+                    0x18 => {
+                        self.b = self.rr_8(self.b);
+                    }
+
+                    0x19 => {
+                        self.c = self.rr_8(self.c);
+                    }
+
+                    0x1A => {
+                        self.d = self.rr_8(self.d);
+                    }
+
+                    0x1B => {
+                        self.e = self.rr_8(self.e);
+                    }
+
+                    0x1C => {
+                        self.h = self.rr_8(self.h);
+                    }
+
+                    0x1D => {
+                        self.l = self.rr_8(self.l);
+                    }
+
+                    0x1E => {
+                        let hl = self.get_hl();
+                        let r = self.rr_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
+                    }
+
                     // 11. SRL n
 
                     0x3F => {

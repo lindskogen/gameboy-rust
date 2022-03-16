@@ -70,6 +70,14 @@ impl ProcessingUnit {
         }
     }
 
+
+    fn swap(&mut self, n: u8) -> u8 {
+        let r = n.swap_bytes();
+        self.set_swap_flags(r);
+        r
+    }
+
+
     fn get_af(&self) -> u16 {
         ((self.a as u16) << 8) | (self.f.bits as u16)
     }
@@ -171,7 +179,6 @@ impl ProcessingUnit {
             lookup_cb_prefix_op_code(self.read_byte(pc + 1))
         }
     }
-
 
 
     fn ld_a(&mut self, n: u8) {
@@ -372,14 +379,6 @@ impl ProcessingUnit {
     fn set_half_carry(&mut self, prev: u8, n: u8) {
         // H: Set if no borrow from bit 4
         self.f.set(Flags::H, (prev & 0xf0) != (n & 0xf0))
-    }
-
-    fn dec_flags_16(&mut self, prev: u16, n: u16) {
-        self.f.set(Flags::ZERO, n == 0);
-        self.f.insert(Flags::N);
-
-        // H: Set if no borrow from bit 8??
-        self.f.set(Flags::H, prev.leading_zeros() >= 12);
     }
 
     fn compare_a_with(&mut self, n: u8) {
