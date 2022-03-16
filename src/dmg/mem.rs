@@ -18,12 +18,19 @@ const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;
 
 
+const ERAM_BEGIN: usize = 0xa000;
+const ERAM_END: usize = 0xbfff;
+
+const ERAM_SIZE: usize = ERAM_END - ERAM_BEGIN + 1;
+
+
 const MEM_SIZE: usize = 0xffff + 1;
 
 pub type RomBuffer = Vec<u8>;
 
 pub struct MemoryBus {
     memory: [u8; MEM_SIZE],
+    external_memory: [u8; ERAM_SIZE],
     rom: Option<RomBuffer>,
     boot_rom_disabled: bool,
     mbc_mode: MBC,
@@ -38,6 +45,7 @@ impl Default for MemoryBus {
     fn default() -> Self {
         MemoryBus {
             memory: [0x00; MEM_SIZE],
+            external_memory: [0x00; ERAM_SIZE],
             rom: None,
             mbc_mode: MBC::default(),
             mbc1_params: MBC1Params::default(),
@@ -64,11 +72,15 @@ impl MemoryBus {
         }
 
         let ram_size = rom.as_ref().map(|rom| rom[0x0149]).unwrap_or(0u8);
-        println!("RAM size: {}", ram_size);
+
+        if ram_size > 0 {
+            println!("RAM size: {}", ram_size);
+        }
 
         MemoryBus {
             memory,
             rom,
+            external_memory: [0x00; ERAM_SIZE],
             mbc_mode: mbc,
             mbc1_params: MBC1Params::default(),
             rom_offset: 0,
@@ -123,7 +135,9 @@ impl MemoryBus {
                     _ => {}
                 }
             }
-            // TODO: handle write to external RAM.
+            ERAM_BEGIN..=ERAM_END => {
+                self.external_memory[self.ram_offset + (address & 0x1fff)] = value;
+            }
             0xff07 => {
                 // println!("Timer Control: {:b}", value);
                 self.memory[address] = value
@@ -162,9 +176,10 @@ impl MemoryBus {
             0x4000..=0x7fff => {
                 rom[self.rom_offset + (address & 0x3fff)]
             }
+            ERAM_BEGIN..=ERAM_END => {
+                self.external_memory[self.ram_offset + (address & 0x1fff)]
+            }
             _ => rom[address]
-
-            // TODO: handle external RAM
         }
     }
 
