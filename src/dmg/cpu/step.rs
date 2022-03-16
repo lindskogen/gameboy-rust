@@ -1,9 +1,9 @@
 use bit_field::BitField;
 
+use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+
 use super::Flags;
 use super::ProcessingUnit;
-
-use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
 impl ProcessingUnit {
     pub fn next(&mut self) -> u32 {
@@ -538,27 +538,13 @@ impl ProcessingUnit {
 
 
                     // 1. SWAP n
-                    0x37 => {
-                        self.a = self.swap(self.a);
-                    }
-                    0x30 => {
-                        self.b = self.swap(self.b)
-                    }
-                    0x31 => {
-                        self.c = self.swap(self.c);
-                    }
-                    0x32 => {
-                        self.d = self.swap(self.d);
-                    }
-                    0x33 => {
-                        self.e = self.swap(self.e);
-                    }
-                    0x34 => {
-                        self.h = self.swap(self.h);
-                    }
-                    0x35 => {
-                        self.l = self.swap(self.l);
-                    }
+                    0x37 => self.a = self.swap(self.a),
+                    0x30 => self.b = self.swap(self.b),
+                    0x31 => self.c = self.swap(self.c),
+                    0x32 => self.d = self.swap(self.d),
+                    0x33 => self.e = self.swap(self.e),
+                    0x34 => self.h = self.swap(self.h),
+                    0x35 => self.l = self.swap(self.l),
                     0x36 => {
                         let hl = self.get_hl();
                         let r = self.swap(self.read_byte(hl));
@@ -582,34 +568,13 @@ impl ProcessingUnit {
 
                     // 8. RR n
 
-                    0x1F => {
-                        self.a = self.rr_8(self.a);
-                    }
-
-                    0x18 => {
-                        self.b = self.rr_8(self.b);
-                    }
-
-                    0x19 => {
-                        self.c = self.rr_8(self.c);
-                    }
-
-                    0x1A => {
-                        self.d = self.rr_8(self.d);
-                    }
-
-                    0x1B => {
-                        self.e = self.rr_8(self.e);
-                    }
-
-                    0x1C => {
-                        self.h = self.rr_8(self.h);
-                    }
-
-                    0x1D => {
-                        self.l = self.rr_8(self.l);
-                    }
-
+                    0x1F => self.a = self.rr_8(self.a),
+                    0x18 => self.b = self.rr_8(self.b),
+                    0x19 => self.c = self.rr_8(self.c),
+                    0x1A => self.d = self.rr_8(self.d),
+                    0x1B => self.e = self.rr_8(self.e),
+                    0x1C => self.h = self.rr_8(self.h),
+                    0x1D => self.l = self.rr_8(self.l),
                     0x1E => {
                         let hl = self.get_hl();
                         let r = self.rr_8(self.read_byte(hl));
