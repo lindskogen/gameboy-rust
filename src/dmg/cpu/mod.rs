@@ -1,17 +1,16 @@
-mod step;
-
 use std::cell::RefCell;
 use std::io::{stdout, Write};
 use std::ops::{BitAnd, BitOr};
 use std::rc::Rc;
 
-use bitflags::bitflags;
 use bit_field::BitField;
-
+use bitflags::bitflags;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
 use super::mem::MemoryBus;
+
+mod step;
 
 bitflags! {
     pub struct Flags: u8 {
@@ -240,9 +239,11 @@ impl ProcessingUnit {
     }
 
     fn add_hl_16(&mut self, hl: u16) {
-        let (new_hl, overflow) = self.get_hl().overflowing_add(hl);
+        let prev = self.get_hl();
+        let (new_hl, overflow) = prev.overflowing_add(hl);
         self.f.remove(Flags::N);
-        // TODO - half carry
+
+        self.f.set(Flags::H, (((prev & 0xfff) + (hl & 0xfff)) & 0x1000) > 0);
         self.f.set(Flags::CARRY, overflow);
         self.set_hl(new_hl);
     }
@@ -506,6 +507,47 @@ mod tests {
         assert!(!cpu.f.contains(Flags::ZERO));
         assert!(!cpu.f.contains(Flags::H));
         assert!(cpu.f.contains(Flags::N));
+        assert!(cpu.f.contains(Flags::CARRY));
+    }
+
+    fn setup_cpu_for_add_hl() -> ProcessingUnit {
+        let bootloader = [0u8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.f = Flags::empty();
+        cpu.set_hl(0x8a23);
+        cpu.set_bc(0x0605);
+
+        cpu
+    }
+
+    #[test]
+    fn add_hl_bc_works() {
+        let mut cpu = setup_cpu_for_add_hl();
+
+        cpu.add_hl_16(cpu.get_bc());
+
+
+        assert_eq!(cpu.get_hl(), 0x9028);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+        assert!(cpu.f.contains(Flags::H));
+        assert!(!cpu.f.contains(Flags::N));
+        assert!(!cpu.f.contains(Flags::CARRY));
+    }
+
+    #[test]
+    fn add_hl_hl_works() {
+        let mut cpu = setup_cpu_for_add_hl();
+
+        cpu.add_hl_16(cpu.get_hl());
+
+
+        assert_eq!(cpu.get_hl(), 0x1446);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+        assert!(cpu.f.contains(Flags::H));
+        assert!(!cpu.f.contains(Flags::N));
         assert!(cpu.f.contains(Flags::CARRY));
     }
 }
