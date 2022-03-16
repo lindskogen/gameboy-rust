@@ -1,14 +1,12 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::io::{stdout, Write};
 use std::ops::{BitAnd, BitOr};
 use std::rc::Rc;
 
 use bit_field::BitField;
 use bitflags::bitflags;
-use dmg::core::Core;
 
 use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
-use dmg::intf::InterruptFlag;
 
 use super::mem::MemoryBus;
 
@@ -125,9 +123,9 @@ impl ProcessingUnit {
 
         match addr {
             0xff01 => {
-                print!("{}", value as char);
+                println!("{:?} {:02x}", value as char, value);
                 stdout().flush().expect("No flush?");
-            },
+            }
             _ => {
                 self.bus.borrow_mut().write_byte(addr, value)
             }
@@ -1241,13 +1239,15 @@ impl ProcessingUnit {
         // H: Set if no borrow from bit 8??
         self.f.set(Flags::H, prev.leading_zeros() >= 12);
     }
+
     fn compare_a_with(&mut self, n: u8) {
-        let (nn, overflow) = self.a.overflowing_sub(n);
-        self.f.set(Flags::ZERO, nn == 0);
+        let (r, did_overflow) = self.a.overflowing_sub(n);
+        self.f.set(Flags::ZERO, r == 0);
         self.f.insert(Flags::N);
-        self.set_half_carry(n, nn);
-        self.f.set(Flags::CARRY, overflow);
+        self.f.set(Flags::H, (self.a & 0xf) < (n & 0xf));
+        self.f.set(Flags::CARRY, did_overflow);
     }
+
     fn sub_a(&mut self, n: u8) {
         let (nn, overflow) = self.a.overflowing_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
@@ -1256,6 +1256,7 @@ impl ProcessingUnit {
         self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
+
     fn add_a(&mut self, n: u8) {
         let (nn, overflow) = self.a.overflowing_add(n);
         self.f.set(Flags::ZERO, nn == 0);
@@ -1303,6 +1304,63 @@ impl ProcessingUnit {
         self.f.set(Flags::CARRY, overflow);
 
         self.a = aa;
+    }
+}
 
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use dmg::cpu::{Flags, ProcessingUnit};
+    use dmg::mem::MemoryBus;
+
+    fn setup_cpu_for_compare() -> ProcessingUnit {
+        let bootloader = [0x40u8; 256];
+        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+
+        cpu.f = Flags::empty();
+        cpu.a = 0x3c;
+        cpu.b = 0x2f;
+        cpu.set_hl(0x10);
+
+        cpu
+    }
+
+    #[test]
+    fn cp_b_works() {
+        let mut cpu = setup_cpu_for_compare();
+
+        cpu.compare_a_with(cpu.b);
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+        assert!(cpu.f.contains(Flags::H));
+        assert!(cpu.f.contains(Flags::N));
+        assert!(!cpu.f.contains(Flags::CARRY));
+    }
+
+    #[test]
+    fn cp_3c_works() {
+        let mut cpu = setup_cpu_for_compare();
+
+        cpu.compare_a_with(0x3c);
+
+        assert!(cpu.f.contains(Flags::ZERO));
+        assert!(!cpu.f.contains(Flags::H));
+        assert!(cpu.f.contains(Flags::N));
+        assert!(!cpu.f.contains(Flags::CARRY));
+    }
+
+    #[test]
+    fn cp_hl_works() {
+        let mut cpu = setup_cpu_for_compare();
+
+        cpu.compare_a_with(cpu.read_byte(cpu.get_hl()));
+
+        assert!(!cpu.f.contains(Flags::ZERO));
+        assert!(!cpu.f.contains(Flags::H));
+        assert!(cpu.f.contains(Flags::N));
+        assert!(cpu.f.contains(Flags::CARRY));
     }
 }

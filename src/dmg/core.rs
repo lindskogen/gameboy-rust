@@ -5,7 +5,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 use dmg::cpu::ProcessingUnit;
-use dmg::mem::{MemoryBus, ROM_END, RomBuffer};
+use dmg::mem::{MemoryBus, RomBuffer};
 
 pub struct Core {
     bus: Rc<RefCell<MemoryBus>>,
