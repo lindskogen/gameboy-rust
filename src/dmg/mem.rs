@@ -11,7 +11,6 @@
 use std::fmt;
 
 use crate::dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
-use std::convert::{TryFrom, TryInto};
 use crate::dmg::intf::InterruptFlag;
 
 const ROM_BEGIN: usize = 0x100;
