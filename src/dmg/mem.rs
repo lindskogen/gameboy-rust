@@ -10,9 +10,9 @@
 
 use std::fmt;
 
-use dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
+use crate::dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
 use std::convert::{TryFrom, TryInto};
-use dmg::intf::InterruptFlag;
+use crate::dmg::intf::InterruptFlag;
 
 const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;

@@ -6,7 +6,7 @@ use std::rc::Rc;
 use bit_field::BitField;
 use bitflags::bitflags;
 
-use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+use crate::dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
 use super::mem::MemoryBus;
 
@@ -460,8 +460,8 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use dmg::cpu::{Flags, ProcessingUnit};
-    use dmg::mem::MemoryBus;
+    use crate::dmg::cpu::{Flags, ProcessingUnit};
+    use crate::dmg::mem::MemoryBus;
 
     fn setup_cpu_for_compare() -> ProcessingUnit {
         let bootloader = [0x40u8; 256];

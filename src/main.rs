@@ -1,7 +1,3 @@
-extern crate dmg;
-extern crate image;
-extern crate minifb;
-
 use std::env;
 use std::time::{Duration, Instant};
 

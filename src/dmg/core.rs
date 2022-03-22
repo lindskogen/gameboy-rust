@@ -4,8 +4,8 @@ use std::io;
 use std::io::Read;
 use std::rc::Rc;
 
-use dmg::cpu::ProcessingUnit;
-use dmg::mem::{MemoryBus, RomBuffer};
+use crate::dmg::cpu::ProcessingUnit;
+use crate::dmg::mem::{MemoryBus, RomBuffer};
 
 pub struct Core {
     bus: Rc<RefCell<MemoryBus>>,

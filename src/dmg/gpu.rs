@@ -3,7 +3,7 @@ use std::usize;
 
 use bitflags::bitflags;
 
-use dmg::intf::InterruptFlag;
+use crate::dmg::intf::InterruptFlag;
 
 pub const VRAM_BEGIN: usize = 0x8000;
 pub const VRAM_END: usize = 0xFF4B;

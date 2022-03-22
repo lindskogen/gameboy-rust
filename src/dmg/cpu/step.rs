@@ -1,6 +1,6 @@
 use bit_field::BitField;
 
-use dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+use crate::dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
 use super::Flags;
 use super::ProcessingUnit;
