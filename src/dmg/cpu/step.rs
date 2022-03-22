@@ -547,6 +547,12 @@ impl ProcessingUnit {
                         self.write_byte(hl, r);
                     }
 
+                    // 3. RES b,r
+
+                    0x87 => {
+                        self.a.set_bit(0, false);
+                    }
+
 
                     // 6. RL n
                     0x17 => self.a = self.rl_8(self.a),
