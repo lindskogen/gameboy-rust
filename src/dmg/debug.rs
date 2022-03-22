@@ -256,7 +256,6 @@ pub fn lookup_op_code(keyword: u8) -> (&'static str, u32) {
         0xFD => ("ILLEGAL_FD ", 4),
         0xFE => ("CP d8", 8),
         0xFF => ("RST 38H", 16),
-        _ => unreachable!()
     }
 }
 
@@ -519,6 +518,5 @@ pub fn lookup_cb_prefix_op_code(keyword: u8) -> (&'static str, u32) {
         0xFD => ("SET 7,L", 8),
         0xFE => ("SET 7,HL", 16),
         0xFF => ("SET 7,A", 8),
-        _ => unreachable!()
     }
 }

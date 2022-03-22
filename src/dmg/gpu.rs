@@ -102,7 +102,6 @@ pub struct GPU {
     bgp: u8,
 
     cycles: u32,
-    dots: u32,
     pub intf: InterruptFlag,
 }
 
@@ -132,7 +131,6 @@ impl GPU {
             bgp: 0x00,
 
             cycles: 0,
-            dots: 0,
             intf: InterruptFlag::empty(),
         }
     }
