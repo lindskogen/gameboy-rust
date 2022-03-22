@@ -135,8 +135,12 @@ impl ProcessingUnit {
     }
 
     fn write_byte(&mut self, addr: u16, value: u8) {
-        if addr == 0xff00 {
-            println!("Write {:04x} {:x}", addr, value);
+        // if addr == 0xff00 {
+        //     println!("Write {:04x} {:x}", addr, value);
+        // }
+
+        if addr == 0xff50 {
+            self.enable_debugging = true;
         }
 
         match addr {
@@ -160,7 +164,7 @@ impl ProcessingUnit {
 
     fn read_joypad(&self) -> u8 {
         // TODO: right now joypad is hard-coded to no buttons pressed
-        0x0f
+        0xef
     }
 
     pub fn debug_print(&self, pc: u16) {
@@ -393,7 +397,7 @@ impl ProcessingUnit {
         let (nn, overflow) = self.a.overflowing_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.insert(Flags::N);
-        self.set_half_carry(n, nn);
+        self.set_half_carry(self.a, nn);
         self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
@@ -402,7 +406,7 @@ impl ProcessingUnit {
         let (nn, overflow) = self.a.overflowing_add(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.remove(Flags::N);
-        self.set_half_carry(n, nn);
+        self.f.set(Flags::H, (((self.a & 0xf) + (n & 0xf)) & 0x10) > 0);
         self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
@@ -425,8 +429,8 @@ impl ProcessingUnit {
         self.a = r;
     }
 
-    fn rst(&mut self, pc: u16, addr: u16) {
-        self.push_u16(pc);
+    fn rst(&mut self, addr: u16) {
+        self.push_u16(self.pc);
         self.pc = addr;
     }
 
@@ -442,7 +446,7 @@ impl ProcessingUnit {
     }
 
     fn sbc(&mut self, n: u8) {
-        let (aa, overflow) = self.a.overflowing_sub(n + if self.f.contains(Flags::CARRY) { 1 } else { 0 });
+        let (aa, overflow) = self.a.overflowing_sub(n.wrapping_add(if self.f.contains(Flags::CARRY) { 1 } else { 0 }));
 
 
         self.f.set(Flags::ZERO, aa == 0);

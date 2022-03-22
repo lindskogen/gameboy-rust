@@ -11,6 +11,8 @@ impl ProcessingUnit {
 
         let pc = self.pc;
 
+        self.debug_print(pc);
+
         self.pc += 1;
 
         match self.read_byte(pc) {
@@ -733,14 +735,14 @@ impl ProcessingUnit {
             // 3.3.10 Restarts
 
             // 1. RST n
-            0xC7 => self.rst(pc, 0x00),
-            0xCF => self.rst(pc, 0x08),
-            0xD7 => self.rst(pc, 0x10),
-            0xDF => self.rst(pc, 0x18),
-            0xE7 => self.rst(pc, 0x20),
-            0xEF => self.rst(pc, 0x28),
-            0xF7 => self.rst(pc, 0x30),
-            0xFF => self.rst(pc, 0x38),
+            0xC7 => self.rst( 0x00),
+            0xCF => self.rst( 0x08),
+            0xD7 => self.rst( 0x10),
+            0xDF => self.rst( 0x18),
+            0xE7 => self.rst( 0x20),
+            0xEF => self.rst( 0x28),
+            0xF7 => self.rst( 0x30),
+            0xFF => self.rst( 0x38),
 
             // 3.3.11 Returns
 
