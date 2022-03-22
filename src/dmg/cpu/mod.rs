@@ -72,7 +72,12 @@ impl ProcessingUnit {
 
     fn swap(&mut self, n: u8) -> u8 {
         let r = n.swap_bytes();
-        self.set_swap_flags(r);
+
+        self.f.set(Flags::ZERO, r == 0);
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.remove(Flags::CARRY);
+
         r
     }
 
@@ -277,13 +282,6 @@ impl ProcessingUnit {
         self.pc = dest
     }
 
-    fn set_swap_flags(&mut self, v: u8) {
-        self.f.set(Flags::ZERO, v == 0);
-        self.f.remove(Flags::N);
-        self.f.remove(Flags::H);
-        self.f.remove(Flags::CARRY);
-    }
-
     fn rr_8(&mut self, v: u8) -> u8 {
         let carry = v.get_bit(0);
         let mut v = v >> 1;
@@ -337,20 +335,6 @@ impl ProcessingUnit {
 
         v
     }
-
-    fn rl_16(&mut self, v: u16) -> u16 {
-        let carry = v.get_bit(15);
-        let mut v = v << 1;
-        v.set_bit(0, self.f.contains(Flags::CARRY));
-
-        self.f.set(Flags::ZERO, v == 0);
-        self.f.remove(Flags::N);
-        self.f.remove(Flags::H);
-        self.f.set(Flags::CARRY, carry);
-
-        v
-    }
-
 
     fn xor(&mut self, n: u8) {
         self.a = self.a ^ n;
