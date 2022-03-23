@@ -151,8 +151,7 @@ impl ProcessingUnit {
 
         match addr {
             0xff01 => {
-                println!("{:?} {:02x}", value as char, value);
-                stdout().flush().expect("No flush?");
+                print!("{}", value as char);
             }
             _ => {
                 self.bus.borrow_mut().write_byte(addr, value)
