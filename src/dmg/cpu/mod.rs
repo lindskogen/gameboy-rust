@@ -227,7 +227,7 @@ impl ProcessingUnit {
     }
 
 
-    fn check_and_execute_interrupts(&mut self) {
+    fn check_and_execute_interrupts(&mut self) -> bool {
         // if let Some(count) = self.serial_countdown {
         //     if count >= self.cycles {
         //         self.mem.gpu.intf.insert(InterruptFlag::SERIAL);
@@ -248,8 +248,11 @@ impl ProcessingUnit {
                 }
                 self.push_u16(self.pc);
                 self.pc = addr;
+                return true;
             }
         }
+
+        return false;
     }
 
     fn add_hl_16(&mut self, hl: u16) {
