@@ -532,6 +532,7 @@ impl ProcessingUnit {
                 self.pc += 1;
                 match self.read_byte(npc) {
 
+                    // 3.3.5. Miscellaneous
 
                     // 1. SWAP n
                     0x37 => self.a = self.swap(self.a),
@@ -547,12 +548,64 @@ impl ProcessingUnit {
                         self.write_byte(hl, r);
                     }
 
-                    // 3. RES b,r
+                    // 3.3.7. Bit Opcodes
 
-                    0x87 => {
-                        self.a.set_bit(0, false);
+                    // 1. BIT b, r
+
+                    op @ 0x40..=0x7f => {
+                        let r = op & 0b111;
+                        let b = ((op >> 3) & 0b111) as usize;
+
+                        match r {
+                            0b111 => Self::bit(b, &mut self.a, &mut self.f),
+                            0b000 => Self::bit(b, &mut self.b, &mut self.f),
+                            0b001 => Self::bit(b, &mut self.c, &mut self.f),
+                            0b010 => Self::bit(b, &mut self.d, &mut self.f),
+                            0b011 => Self::bit(b, &mut self.e, &mut self.f),
+                            0b100 => Self::bit(b, &mut self.h, &mut self.f),
+                            0b101 => Self::bit(b, &mut self.l, &mut self.f),
+                            _ => unreachable!()
+                        };
                     }
 
+                    // 2. SET b, r
+
+                    op @ 0xc0..=0xff => {
+                        let r = op & 0b111;
+                        let b = ((op >> 3) & 0b111) as usize;
+
+                        match r {
+                            0b111 => self.a.set_bit(b, true),
+                            0b000 => self.b.set_bit(b, true),
+                            0b001 => self.c.set_bit(b, true),
+                            0b010 => self.d.set_bit(b, true),
+                            0b011 => self.e.set_bit(b, true),
+                            0b100 => self.h.set_bit(b, true),
+                            0b101 => self.l.set_bit(b, true),
+                            _ => unreachable!()
+                        };
+                    }
+
+                    // 3. RES b,r
+
+                    op @ 0x80..=0xbf => {
+                        let r = op & 0b111;
+                        let b = ((op >> 3) & 0b111) as usize;
+
+                        match r {
+                            0b111 => self.a.set_bit(b, false),
+                            0b000 => self.b.set_bit(b, false),
+                            0b001 => self.c.set_bit(b, false),
+                            0b010 => self.d.set_bit(b, false),
+                            0b011 => self.e.set_bit(b, false),
+                            0b100 => self.h.set_bit(b, false),
+                            0b101 => self.l.set_bit(b, false),
+                            _ => unreachable!()
+                        };
+                    }
+
+
+                    // 3.3.6. Rotates & Shifts
 
                     // 6. RL n
                     0x17 => self.a = self.rl_8(self.a),
@@ -583,11 +636,22 @@ impl ProcessingUnit {
                         self.write_byte(hl, r);
                     }
 
+                    // 9. SLA n
+
+                    0x27 => {
+                        let a = self.a;
+                        self.a = ((a as i8) << 1) as u8;
+                        self.f.set(Flags::ZERO, self.a == 0);
+                        self.f.remove(Flags::N);
+                        self.f.remove(Flags::H);
+                        self.f.set(Flags::CARRY, (0x80 & a) != 0)
+                    }
+
                     // 11. SRL n
 
                     0x3F => {
                         let a = self.a;
-                        self.a = a >> 1;
+                        self.a = ((a as i8) >> 1) as u8;
                         self.f.set(Flags::ZERO, self.a == 0);
                         self.f.remove(Flags::N);
                         self.f.remove(Flags::H);
@@ -595,36 +659,14 @@ impl ProcessingUnit {
                     }
 
                     0x38 => {
-                        let a = self.b;
-                        self.b = a >> 1;
+                        let b = self.b;
+                        self.b = ((b as i8) >> 1) as u8;
                         self.f.set(Flags::ZERO, self.b == 0);
                         self.f.remove(Flags::N);
                         self.f.remove(Flags::H);
-                        self.f.set(Flags::CARRY, (0b1 & a) != 0)
+                        self.f.set(Flags::CARRY, (0b1 & b) != 0)
                     }
 
-                    // 3.3.7. Bit Opcodes
-
-
-                    // BIT 0, A
-                    0x47 => {
-                        self.f.set(Flags::ZERO, !self.a.get_bit(0));
-                        self.f.remove(Flags::N);
-                        self.f.insert(Flags::H);
-                    }
-                    // BIT 3, A
-                    0x5f => {
-                        self.f.set(Flags::ZERO, !self.a.get_bit(3));
-                        self.f.remove(Flags::N);
-                        self.f.insert(Flags::H);
-                    }
-
-                    // BIT 7, H
-                    0x7c => {
-                        self.f.set(Flags::ZERO, !self.h.get_bit(7));
-                        self.f.remove(Flags::N);
-                        self.f.insert(Flags::H);
-                    }
                     _ => {
                         println!("Unimplemented under 0xCB at pc={:x}, op={:x}: {}", npc, self.read_byte(npc), lookup_cb_prefix_op_code(self.read_byte(npc)).0);
                         println!("{:?}", self);
@@ -741,14 +783,14 @@ impl ProcessingUnit {
             // 3.3.10 Restarts
 
             // 1. RST n
-            0xC7 => self.rst( 0x00),
-            0xCF => self.rst( 0x08),
-            0xD7 => self.rst( 0x10),
-            0xDF => self.rst( 0x18),
-            0xE7 => self.rst( 0x20),
-            0xEF => self.rst( 0x28),
-            0xF7 => self.rst( 0x30),
-            0xFF => self.rst( 0x38),
+            0xC7 => self.rst(0x00),
+            0xCF => self.rst(0x08),
+            0xD7 => self.rst(0x10),
+            0xDF => self.rst(0x18),
+            0xE7 => self.rst(0x20),
+            0xEF => self.rst(0x28),
+            0xF7 => self.rst(0x30),
+            0xFF => self.rst(0x38),
 
             // 3.3.11 Returns
 

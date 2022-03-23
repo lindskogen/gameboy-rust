@@ -445,6 +445,12 @@ impl ProcessingUnit {
         self.a = aa;
     }
 
+    fn bit(bit: usize, reg: &mut u8, flags: &mut Flags) {
+        flags.set(Flags::ZERO, !reg.get_bit(bit));
+        flags.remove(Flags::N);
+        flags.insert(Flags::H);
+    }
+
     fn sbc(&mut self, n: u8) {
         let (aa, overflow) = self.a.overflowing_sub(n.wrapping_add(if self.f.contains(Flags::CARRY) { 1 } else { 0 }));
 
