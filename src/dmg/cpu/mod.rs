@@ -141,9 +141,13 @@ impl ProcessingUnit {
         //     println!("Write {:04x} {:x}", addr, value);
         // }
 
-        // if addr == 0xff50 {
-        //     self.enable_debugging = true;
-        // }
+        if addr == 0xff46 {
+            todo!("DMA");
+        }
+
+        if addr == 0xff50 {
+            self.enable_debugging = true;
+        }
 
         match addr {
             0xff01 => {
