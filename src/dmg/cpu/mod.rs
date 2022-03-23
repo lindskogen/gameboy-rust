@@ -40,6 +40,7 @@ pub struct ProcessingUnit {
 
     bus: Rc<RefCell<MemoryBus>>,
 
+    halted: bool,
     master_interrupt_enabled: bool,
     enable_debugging: bool,
 
@@ -60,6 +61,7 @@ impl ProcessingUnit {
             l: 0,
             pc: 0x0,
             sp: 0xFFFE,
+            halted: false,
             master_interrupt_enabled: false,
             bus,
 

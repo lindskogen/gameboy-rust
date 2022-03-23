@@ -494,6 +494,17 @@ impl ProcessingUnit {
             // 6. NOP
             0x00 => {}
 
+            // 7. HALT
+            0x76 => {
+                assert!(self.master_interrupt_enabled);
+                self.halted = true;
+            }
+
+            // 8. STOP
+            0x10 => {
+                // No action to be done at STOP?
+            }
+
             // 9. DI
 
             0xf3 => {
