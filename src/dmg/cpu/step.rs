@@ -188,23 +188,20 @@ impl ProcessingUnit {
             // 3.3.2 16-bit loads
             // 1. LD n, nn
             0x01 => {
-                let (n1, n2) = self.get_immediate_u16_tuple();
-                self.b = n1;
-                self.c = n2;
+                let nn = self.get_immediate_u16();
+                self.set_bc(nn);
+
             }
             0x11 => {
-                let (n1, n2) = self.get_immediate_u16_tuple();
-                self.d = n1;
-                self.e = n2;
+                let nn = self.get_immediate_u16();
+                self.set_de(nn);
             }
             0x21 => {
-                let (n1, n2) = self.get_immediate_u16_tuple();
-                self.h = n1;
-                self.l = n2;
+                let nn = self.get_immediate_u16();
+                self.set_hl(nn)
             }
             0x31 => {
-                let nn = self.get_immediate_u16();
-                self.sp = nn;
+                self.sp = self.get_immediate_u16();
             }
 
             // 2. LD SP, HL

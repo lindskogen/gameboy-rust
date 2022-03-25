@@ -23,15 +23,37 @@ bitflags! {
 }
 
 impl Lcdc {
-    fn new() -> Self { Self { bits: 0b0100_1000 } }
+    fn new() -> Self {
+        Self { bits: 0b0100_1000 }
+    }
 
-    fn lcd_display_enable(&self) -> bool { self.contains(Lcdc::LCD_DISPLAY_ENABLE) }
+    fn lcd_display_enable(&self) -> bool {
+        self.contains(Lcdc::LCD_DISPLAY_ENABLE)
+    }
 
-    fn bg_and_window_tile_data_select(&self) -> u16 { if self.contains(Lcdc::BG_AND_WINDOW_TILE_DATA_SELECT) { 0x8000 } else { 0x8800 } }
+    fn bg_and_window_tile_data_select(&self) -> u16 {
+        if self.contains(Lcdc::BG_AND_WINDOW_TILE_DATA_SELECT) {
+            0x8000
+        } else {
+            0x8800
+        }
+    }
 
-    fn bg_tile_map_display_select(&self) -> u16 { if self.contains(Lcdc::BG_TILE_MAP_DISPLAY_SELECT) { 0x9c00 } else { 0x9800 } }
+    fn bg_tile_map_display_select(&self) -> u16 {
+        if self.contains(Lcdc::BG_TILE_MAP_DISPLAY_SELECT) {
+            0x9c00
+        } else {
+            0x9800
+        }
+    }
 
-    fn obj_size(&self) -> u16 { if self.contains(Lcdc::OBJ_SIZE) { 16 } else { 8 } }
+    fn obj_size(&self) -> u16 {
+        if self.contains(Lcdc::OBJ_SIZE) {
+            16
+        } else {
+            8
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -114,7 +136,6 @@ enum StatMode {
     Transfer3 = 0x03,
 }
 
-
 impl GPU {
     pub fn new() -> GPU {
         GPU {
@@ -173,6 +194,7 @@ impl GPU {
                     if self.ly == 143 {
                         self.stat.mode = StatMode::VBlank1;
                         self.intf.insert(InterruptFlag::V_BLANK);
+                        // eprintln!("!! Interrupt {:?}", InterruptFlag::V_BLANK);
                         if self.stat.enable_m1_interrupt {
                             self.intf.insert(InterruptFlag::LCD_STAT);
                         }
@@ -207,15 +229,30 @@ impl GPU {
         return should_render;
     }
 
-
     pub fn read_vram(&self, address: u16) -> u8 {
         match address {
             0xff40 => self.lcdc.bits,
             0xff41 => {
-                let bit6 = if self.stat.enable_ly_interrupt { 0x40 } else { 0x00 };
-                let bit5 = if self.stat.enable_m2_interrupt { 0x20 } else { 0x00 };
-                let bit4 = if self.stat.enable_m1_interrupt { 0x10 } else { 0x00 };
-                let bit3 = if self.stat.enable_m0_interrupt { 0x08 } else { 0x00 };
+                let bit6 = if self.stat.enable_ly_interrupt {
+                    0x40
+                } else {
+                    0x00
+                };
+                let bit5 = if self.stat.enable_m2_interrupt {
+                    0x20
+                } else {
+                    0x00
+                };
+                let bit4 = if self.stat.enable_m1_interrupt {
+                    0x10
+                } else {
+                    0x00
+                };
+                let bit3 = if self.stat.enable_m0_interrupt {
+                    0x08
+                } else {
+                    0x00
+                };
                 let bit2 = if self.ly == self.lc { 0x04 } else { 0x00 };
                 bit6 | bit5 | bit4 | bit3 | bit2 | (self.stat.mode as u8)
             }
@@ -227,7 +264,7 @@ impl GPU {
             0xff4a => self.wx,
             0xff4b => self.wy,
             0xff0f => self.intf.bits(),
-            _ => self.vram[address as usize - VRAM_BEGIN]
+            _ => self.vram[address as usize - VRAM_BEGIN],
         }
     }
 
@@ -260,8 +297,16 @@ impl GPU {
         };
 
         // Palettes
-        let color_l = if tile_y_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
-        let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
+        let color_l = if tile_y_data[0] & (0x80 >> tile_x) != 0 {
+            1
+        } else {
+            0
+        };
+        let color_h = if tile_y_data[1] & (0x80 >> tile_x) != 0 {
+            2
+        } else {
+            0
+        };
         let color = (color_h | color_l) as u8;
 
         TilePixelValue::from_palette_and_u8(self.bgp, color).to_rgb()
@@ -300,7 +345,10 @@ impl GPU {
         let y = self.ly as u16;
 
         for x in 0..160u16 {
-            buffer[y as usize * 160 + x as usize] = self.draw_tile_at(((x + self.scx as u16) % 256) as u8, ((y + self.scy as u16) % 256) as u8);
+            buffer[y as usize * 160 + x as usize] = self.draw_tile_at(
+                ((x + self.scx as u16) % 256) as u8,
+                ((y + self.scy as u16) % 256) as u8,
+            );
         }
     }
 
@@ -308,7 +356,8 @@ impl GPU {
         for i in 0usize..(144 / 8) * (160 / 8) {
             for y in 0..8 {
                 for x in 0..8 {
-                    buffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160] = self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8)
+                    buffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160] =
+                        self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8)
                 }
             }
         }
@@ -320,7 +369,7 @@ impl GPU {
             let buffer = &self.vram[from..(from + 0x10)];
 
             let absolute_addr = from + VRAM_BEGIN;
-            if buffer.iter().any(|n| { *n != 0 }) {
+            if buffer.iter().any(|n| *n != 0) {
                 println!("{:x}: {:02x?}", absolute_addr, buffer);
             } else {
                 println!("{:x}: ", absolute_addr);
@@ -328,4 +377,3 @@ impl GPU {
         }
     }
 }
-

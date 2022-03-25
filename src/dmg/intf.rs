@@ -33,7 +33,7 @@ impl InterruptFlag {
             InterruptFlag::TIMER => Some(0x50),
             InterruptFlag::SERIAL => Some(0x58),
             InterruptFlag::JOYPAD => Some(0x60),
-            _ => None
+            _ => None,
         }
     }
 }

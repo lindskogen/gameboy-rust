@@ -259,7 +259,6 @@ pub fn lookup_op_code(keyword: u8) -> (&'static str, u32) {
     }
 }
 
-
 pub fn lookup_cb_prefix_op_code(keyword: u8) -> (&'static str, u32) {
     match keyword {
         0x00 => ("RLC B", 8),

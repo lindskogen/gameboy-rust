@@ -1,8 +1,6 @@
-mod cpu;
-mod gpu;
-mod mem;
-mod debug;
-mod intf;
 pub mod core;
-
-
+mod cpu;
+mod debug;
+mod gpu;
+mod intf;
+mod mem;

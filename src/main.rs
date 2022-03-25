@@ -21,21 +21,14 @@ fn main() {
     options.scale = Scale::X4;
     options.resize = true;
 
-    let mut window = Window::new(
-        "gameboy",
-        WIDTH,
-        HEIGHT,
-        options,
-    )
-        .unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+    let mut window = Window::new("gameboy", WIDTH, HEIGHT, options).unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
 
     let mut prev_time = Instant::now();
     let delta = Duration::from_micros(16600);
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
-
 
     let title = core.read_rom_name();
 
@@ -52,9 +45,7 @@ fn main() {
                 if current_time > (prev_time + delta) {
                     prev_time = current_time;
                     // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-                    window
-                        .update_with_buffer(&buffer, WIDTH, HEIGHT)
-                        .unwrap();
+                    window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
                 }
             }
         }
@@ -80,10 +71,16 @@ fn write_buffer_to_file(buffer: &Vec<u32>) {
     for num in buffer.iter() {
         slice.append(&mut num.to_ne_bytes().to_vec());
     }
-    let result = image::save_buffer("image.png", &slice, WIDTH as u32, HEIGHT as u32, image::ColorType::Rgba8);
+    let result = image::save_buffer(
+        "image.png",
+        &slice,
+        WIDTH as u32,
+        HEIGHT as u32,
+        image::ColorType::Rgba8,
+    );
 
     match result {
         Ok(_) => println!("Saved image to {}", "image.png"),
-        Err(e) => eprintln!("Failed saving image: {}", e)
+        Err(e) => eprintln!("Failed saving image: {}", e),
     }
 }

@@ -16,12 +16,10 @@ use crate::dmg::intf::InterruptFlag;
 const ROM_BEGIN: usize = 0x100;
 pub const ROM_END: usize = 0x7fff;
 
-
 const ERAM_BEGIN: usize = 0xa000;
 const ERAM_END: usize = 0xbfff;
 
 const ERAM_SIZE: usize = ERAM_END - ERAM_BEGIN + 1;
-
 
 const MEM_SIZE: usize = 0xffff + 1;
 
@@ -63,11 +61,14 @@ impl MemoryBus {
 
         memory[..256].copy_from_slice(&bootloader);
 
-        let mbc = rom.as_ref().and_then(|rom| rom[0x147].try_into().ok()).unwrap_or_default();
+        let mbc = rom
+            .as_ref()
+            .and_then(|rom| rom[0x147].try_into().ok())
+            .unwrap_or_default();
 
         match mbc {
             MBC::NoMBC | MBC::MBC1 => {}
-            _ => panic!("No support for cartridge type: {:?}", mbc)
+            _ => panic!("No support for cartridge type: {:?}", mbc),
         }
 
         let ram_size = rom.as_ref().map(|rom| rom[0x0149]).unwrap_or(0u8);
@@ -94,46 +95,43 @@ impl MemoryBus {
         let address = addr as usize;
 
         match address {
-            0x0000..=0x1fff => {
-                match self.mbc_mode {
-                    MBC::NoMBC => {}
-                    MBC::MBC1 | MBC::Mbc1ExternalRam => {
-                        self.mbc1_params.ram_on = (value & 0x0F) == 0x0A;
-                    }
-                    _ => {}
+            0x0000..=0x1fff => match self.mbc_mode {
+                MBC::NoMBC => {}
+                MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                    self.mbc1_params.ram_on = (value & 0x0F) == 0x0A;
                 }
-            }
-            0x2000..=0x3fff => {
-                match self.mbc_mode {
-                    MBC::NoMBC | MBC::MBC1 | MBC::Mbc1ExternalRam => {
-                        let value = value & 0x1f;
-                        let value = if value == 0 { 1 } else { value };
-                        self.mbc1_params.rom_bank = (self.mbc1_params.rom_bank & 0x60) + value as u16;
-                        self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
-                    }
-                    _ => {}
+                _ => {}
+            },
+            0x2000..=0x3fff => match self.mbc_mode {
+                MBC::NoMBC | MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                    let value = value & 0x1f;
+                    let value = if value == 0 { 1 } else { value };
+                    self.mbc1_params.rom_bank = (self.mbc1_params.rom_bank & 0x60) + value as u16;
+                    self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
                 }
-            }
-            0x4000..=0x5fff => {
-                match self.mbc1_params.mode {
-                    MBC1Mode::RamMode => {
-                        self.mbc1_params.ram_bank = value as u16 & 3;
-                        self.ram_offset = self.mbc1_params.ram_bank as usize * 0x2000;
-                    }
-                    MBC1Mode::RomMode => {
-                        self.mbc1_params.rom_bank = (self.mbc1_params.rom_bank & 0x1f) + ((value as u16 & 3) << 5);
-                        self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
-                    }
+                _ => {}
+            },
+            0x4000..=0x5fff => match self.mbc1_params.mode {
+                MBC1Mode::RamMode => {
+                    self.mbc1_params.ram_bank = value as u16 & 3;
+                    self.ram_offset = self.mbc1_params.ram_bank as usize * 0x2000;
                 }
-            }
-            0x6000..=0x7fff => {
-                match self.mbc_mode {
-                    MBC::MBC1 | MBC::Mbc1ExternalRam => {
-                        self.mbc1_params.mode = if value & 1 == 1 { MBC1Mode::RamMode } else { MBC1Mode::RomMode };
-                    }
-                    _ => {}
+                MBC1Mode::RomMode => {
+                    self.mbc1_params.rom_bank =
+                        (self.mbc1_params.rom_bank & 0x1f) + ((value as u16 & 3) << 5);
+                    self.rom_offset = self.mbc1_params.rom_bank as usize * 0x4000;
                 }
-            }
+            },
+            0x6000..=0x7fff => match self.mbc_mode {
+                MBC::MBC1 | MBC::Mbc1ExternalRam => {
+                    self.mbc1_params.mode = if value & 1 == 1 {
+                        MBC1Mode::RamMode
+                    } else {
+                        MBC1Mode::RomMode
+                    };
+                }
+                _ => {}
+            },
             ERAM_BEGIN..=ERAM_END => {
                 self.external_memory[self.ram_offset + (address & 0x1fff)] = value;
             }
@@ -145,12 +143,14 @@ impl MemoryBus {
                 self.dma_transfer(value);
             }
             VRAM_BEGIN..=VRAM_END => self.ppu.write_vram(addr, value),
-            0xff50 => { self.boot_rom_disabled = value == 1; }
+            0xff50 => {
+                self.boot_rom_disabled = value == 1;
+            }
             0xffff => {
                 self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
                 // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
             }
-            _ => self.memory[address] = value
+            _ => self.memory[address] = value,
         }
     }
 
@@ -162,29 +162,21 @@ impl MemoryBus {
             0xffff => self.interrupts_enabled.bits(),
             0..=ROM_BEGIN if self.boot_rom_disabled => self.read_rom_with_ram_fallback(address),
             ROM_BEGIN..=ROM_END => self.read_rom_with_ram_fallback(address),
-            _ => self.memory[address]
+            _ => self.memory[address],
         }
     }
 
     fn read_rom_with_ram_fallback(&self, address: usize) -> u8 {
         match self.rom {
-            Some(ref rom) => {
-                self.read_rom(rom, address)
-            }
-            None => {
-                self.memory[address]
-            }
+            Some(ref rom) => self.read_rom(rom, address),
+            None => self.memory[address],
         }
     }
     fn read_rom(&self, rom: &RomBuffer, address: usize) -> u8 {
         match address {
-            0x4000..=0x7fff => {
-                rom[self.rom_offset + (address & 0x3fff)]
-            }
-            ERAM_BEGIN..=ERAM_END => {
-                self.external_memory[self.ram_offset + (address & 0x1fff)]
-            }
-            _ => rom[address]
+            0x4000..=0x7fff => rom[self.rom_offset + (address & 0x3fff)],
+            ERAM_BEGIN..=ERAM_END => self.external_memory[self.ram_offset + (address & 0x1fff)],
+            _ => rom[address],
         }
     }
 
@@ -193,8 +185,6 @@ impl MemoryBus {
     }
     fn dma_transfer(&mut self, addr: u8) {
         let address_block: u16 = (addr as u16) << 8;
-        eprintln!("Start DMA transfer {:04x}-{:04x}", address_block, address_block + 0x9f);
-
         for i in 0..=0x9f {
             self.write_byte(0xfe00 + i, self.read_byte(address_block + i));
         }
@@ -260,7 +250,7 @@ impl TryFrom<u8> for MBC {
             0x01 => Ok(MBC::MBC1),
             0x02 => Ok(MBC::Mbc1ExternalRam),
             0x03 => Ok(MBC::Mbc1BatteryExternalRam),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
