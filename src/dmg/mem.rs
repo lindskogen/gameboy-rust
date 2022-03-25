@@ -141,9 +141,15 @@ impl MemoryBus {
                 // println!("Timer Control: {:b}", value);
                 self.memory[address] = value
             }
+            0xff46 => {
+                self.dma_transfer(value);
+            }
             VRAM_BEGIN..=VRAM_END => self.ppu.write_vram(addr, value),
             0xff50 => { self.boot_rom_disabled = value == 1; }
-            0xffff => self.interrupts_enabled = InterruptFlag::from_bits_truncate(value),
+            0xffff => {
+                self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
+                // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
+            }
             _ => self.memory[address] = value
         }
     }
@@ -184,6 +190,14 @@ impl MemoryBus {
 
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
         self.ppu.debug_vram_into_buffer(buffer);
+    }
+    fn dma_transfer(&mut self, addr: u8) {
+        let address_block: u16 = (addr as u16) << 8;
+        eprintln!("Start DMA transfer {:04x}-{:04x}", address_block, address_block + 0x9f);
+
+        for i in 0..=0x9f {
+            self.write_byte(0xfe00 + i, self.read_byte(address_block + i));
+        }
     }
 }
 

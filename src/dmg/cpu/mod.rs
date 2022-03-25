@@ -141,10 +141,6 @@ impl ProcessingUnit {
         //     println!("Write {:04x} {:x}", addr, value);
         // }
 
-        if addr == 0xff46 {
-            todo!("DMA");
-        }
-
         if addr == 0xff50 {
             self.enable_debugging = true;
         }
@@ -182,7 +178,20 @@ impl ProcessingUnit {
 
         // Logging registers in pairs like bgb
         // println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
-        println!("{:5x}: {:<10}\taf: {:04x}, bc: {:04x}, de: {:04x}, hl: {:04x}, sp: {:4x}, flags: {:?}", pc, op_code, self.get_af(), self.get_bc(), self.get_de(), self.get_hl(), self.sp, self.f)
+        println!(
+            "{:5x}: {:<10}\taf: {:04x}, bc: {:04x}, de: {:04x}, hl: {:04x}, sp: {:04x}, (sp): {:04x}, ly: {}, lc: {}, flags: {:?}",
+            pc,
+            op_code,
+            self.get_af(),
+            self.get_bc(),
+            self.get_de(),
+            self.get_hl(),
+            self.sp,
+            self.peek_sp(),
+            self.read_byte(0xff44), // ly
+            self.read_byte(0xff45), // lc
+            self.f
+        )
     }
 
     fn lookup_op_code_for_pc(&self, pc: u16) -> (&str, u32) {
@@ -227,7 +236,7 @@ impl ProcessingUnit {
     }
 
 
-    fn check_and_execute_interrupts(&mut self) -> bool {
+    fn check_and_execute_interrupts(&mut self) {
         // if let Some(count) = self.serial_countdown {
         //     if count >= self.cycles {
         //         self.mem.gpu.intf.insert(InterruptFlag::SERIAL);
@@ -246,13 +255,12 @@ impl ProcessingUnit {
                 {
                     self.bus.borrow_mut().ppu.intf.remove(triggered);
                 }
+
+                self.halted = false;
                 self.push_u16(self.pc);
                 self.pc = addr;
-                return true;
             }
         }
-
-        return false;
     }
 
     fn add_hl_16(&mut self, hl: u16) {
@@ -373,6 +381,13 @@ impl ProcessingUnit {
     fn reset_and_set_zero(&mut self, n: u8) {
         self.f.bits = 0;
         self.f.set(Flags::ZERO, n == 0);
+    }
+
+    fn peek_sp(&self) -> u16 {
+        let lsb = self.read_byte(self.sp) as u16;
+        let msb = self.read_byte(self.sp.wrapping_add(1)) as u16;
+
+        (msb << 8) | lsb
     }
 
     fn read_sp_u8(&mut self) -> u8 {
