@@ -343,6 +343,7 @@ impl ProcessingUnit {
             0xB8 => self.compare_a_with(self.b),
             0xB9 => self.compare_a_with(self.c),
             0xBA => self.compare_a_with(self.d),
+            0xBB => self.compare_a_with(self.e),
             0xBC => self.compare_a_with(self.h),
             0xBD => self.compare_a_with(self.l),
             0xBE => self.compare_a_with(self.read_byte(self.get_hl())),
