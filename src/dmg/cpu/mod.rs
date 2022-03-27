@@ -14,11 +14,10 @@ mod step;
 
 bitflags! {
     pub struct Flags: u8 {
-        const ZERO = 0b10000000;
-        const N = 0b01000000;
-        const H = 0b00100000;
-        const CARRY = 0b00010000;
-        const F = Self::ZERO.bits | Self::N.bits | Self::H.bits | Self::CARRY.bits;
+        const ZERO = 0b1000_0000;
+        const N = 0b0100_0000;
+        const H = 0b0010_0000;
+        const CARRY = 0b0001_0000;
     }
 }
 
@@ -38,7 +37,7 @@ pub struct ProcessingUnit {
     bus: Rc<RefCell<MemoryBus>>,
 
     halted: bool,
-    master_interrupt_enabled: bool,
+    interrupt_master_enable: bool,
     enable_debugging: bool,
 
     cycles: u32,
@@ -58,7 +57,7 @@ impl ProcessingUnit {
             pc: 0x0,
             sp: 0xFFFE,
             halted: false,
-            master_interrupt_enabled: false,
+            interrupt_master_enable: false,
             bus,
 
             enable_debugging: false,
@@ -228,21 +227,21 @@ impl ProcessingUnit {
     }
 
     fn check_and_execute_interrupts(&mut self) {
-        if self.master_interrupt_enabled
+        if self.interrupt_master_enable
             && self
                 .bus
                 .borrow()
-                .interrupts_enabled
-                .intersects(self.bus.borrow().ppu.intf)
+                .interrupt_enable
+                .intersects(self.bus.borrow().ppu.interrupt_flag)
         {
-            let interrupt_flags = self.bus.borrow().ppu.intf;
+            let interrupt_flags = self.bus.borrow().ppu.interrupt_flag;
             if let Some(addr) = interrupt_flags.interrupt_starting_address() {
-                self.master_interrupt_enabled = false;
+                self.interrupt_master_enable = false;
                 let triggered = interrupt_flags.highest_prio_bit();
 
                 println!("-- Handle interrupt {:?}", triggered);
 
-                self.bus.borrow_mut().ppu.intf.remove(triggered);
+                self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
                 self.halted = false;
                 self.push_u16(self.pc);
                 self.pc = addr;

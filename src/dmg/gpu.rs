@@ -124,7 +124,7 @@ pub struct GPU {
     bgp: u8,
 
     cycles: u32,
-    pub intf: InterruptFlag,
+    pub interrupt_flag: InterruptFlag,
 }
 
 #[repr(u8)]
@@ -152,7 +152,7 @@ impl GPU {
             bgp: 0x00,
 
             cycles: 0,
-            intf: InterruptFlag::empty(),
+            interrupt_flag: InterruptFlag::empty(),
         }
     }
 
@@ -177,7 +177,7 @@ impl GPU {
                     self.cycles = 0;
                     self.stat.mode = StatMode::HBlank0;
                     if self.stat.enable_m0_interrupt {
-                        self.intf.insert(InterruptFlag::LCD_STAT);
+                        self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                     }
                     self.render_line_into_buffer(buffer);
                 }
@@ -188,21 +188,21 @@ impl GPU {
                     self.ly += 1;
 
                     if self.stat.enable_ly_interrupt && self.ly == self.lc {
-                        self.intf.insert(InterruptFlag::LCD_STAT);
+                        self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                     }
 
                     if self.ly == 143 {
                         self.stat.mode = StatMode::VBlank1;
-                        self.intf.insert(InterruptFlag::V_BLANK);
+                        self.interrupt_flag.insert(InterruptFlag::V_BLANK);
                         // eprintln!("!! Interrupt {:?}", InterruptFlag::V_BLANK);
                         if self.stat.enable_m1_interrupt {
-                            self.intf.insert(InterruptFlag::LCD_STAT);
+                            self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                         }
                         should_render = true;
                     } else {
                         self.stat.mode = StatMode::OamRead2;
                         if self.stat.enable_m2_interrupt {
-                            self.intf.insert(InterruptFlag::LCD_STAT);
+                            self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                         }
                     }
                 }
@@ -213,13 +213,14 @@ impl GPU {
                     self.ly += 1;
 
                     if self.stat.enable_ly_interrupt && self.ly == self.lc {
-                        self.intf.insert(InterruptFlag::LCD_STAT);
+                        self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                     }
 
                     if self.ly > 153 {
+                        self.interrupt_flag.remove(InterruptFlag::V_BLANK);
                         self.stat.mode = StatMode::OamRead2;
                         if self.stat.enable_m2_interrupt {
-                            self.intf.insert(InterruptFlag::LCD_STAT);
+                            self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                         }
                         self.ly = 0;
                     }
@@ -263,14 +264,14 @@ impl GPU {
             0xff47 => self.bgp,
             0xff4a => self.wx,
             0xff4b => self.wy,
-            0xff0f => self.intf.bits(),
+            0xff0f => self.interrupt_flag.bits(),
             _ => self.vram[address as usize - VRAM_BEGIN],
         }
     }
 
     pub fn write_vram(&mut self, index: u16, value: u8) {
         match index {
-            0xff40 => self.lcdc.bits = value,
+            0xff40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xff41 => {
                 self.stat.enable_ly_interrupt = value & 0x40 != 0x00;
                 self.stat.enable_m2_interrupt = value & 0x20 != 0x00;
@@ -284,7 +285,7 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
-            0xff0f => self.intf = InterruptFlag::from_bits_truncate(value),
+            0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
         }
     }

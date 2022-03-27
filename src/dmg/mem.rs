@@ -35,7 +35,7 @@ pub struct MemoryBus {
     rom_offset: usize,
     ram_offset: usize,
     pub ppu: GPU,
-    pub interrupts_enabled: InterruptFlag,
+    pub interrupt_enable: InterruptFlag,
 }
 
 impl Default for MemoryBus {
@@ -50,7 +50,7 @@ impl Default for MemoryBus {
             boot_rom_disabled: false,
             rom_offset: 0,
             ram_offset: 0,
-            interrupts_enabled: InterruptFlag::empty(),
+            interrupt_enable: InterruptFlag::empty(),
         }
     }
 }
@@ -86,7 +86,7 @@ impl MemoryBus {
             rom_offset: 0,
             ram_offset: 0,
             ppu: GPU::new(),
-            interrupts_enabled: InterruptFlag::empty(),
+            interrupt_enable: InterruptFlag::empty(),
             boot_rom_disabled: false,
         }
     }
@@ -135,10 +135,6 @@ impl MemoryBus {
             ERAM_BEGIN..=ERAM_END => {
                 self.external_memory[self.ram_offset + (address & 0x1fff)] = value;
             }
-            0xff07 => {
-                // println!("Timer Control: {:b}", value);
-                self.memory[address] = value
-            }
             0xff46 => {
                 self.dma_transfer(value);
             }
@@ -147,7 +143,7 @@ impl MemoryBus {
                 self.boot_rom_disabled = value == 1;
             }
             0xffff => {
-                self.interrupts_enabled = InterruptFlag::from_bits_truncate(value);
+                self.interrupt_enable = InterruptFlag::from_bits_truncate(value);
                 // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
             }
             _ => self.memory[address] = value,
@@ -159,7 +155,7 @@ impl MemoryBus {
 
         match address {
             VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
-            0xffff => self.interrupts_enabled.bits(),
+            0xffff => self.interrupt_enable.bits(),
             0..=ROM_BEGIN if self.boot_rom_disabled => self.read_rom_with_ram_fallback(address),
             ROM_BEGIN..=ROM_END => self.read_rom_with_ram_fallback(address),
             _ => self.memory[address],

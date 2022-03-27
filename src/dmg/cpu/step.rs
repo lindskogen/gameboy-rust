@@ -493,7 +493,7 @@ impl ProcessingUnit {
 
             // 7. HALT
             0x76 => {
-                assert!(self.master_interrupt_enabled);
+                assert!(self.interrupt_master_enable);
                 self.halted = true;
             }
 
@@ -503,27 +503,26 @@ impl ProcessingUnit {
             }
 
             // 9. DI
-
             0xf3 => {
-                self.master_interrupt_enabled = false;
+                self.interrupt_master_enable = false;
             }
 
             // 10. EI
             0xfb => {
-                self.master_interrupt_enabled = true;
+                self.interrupt_master_enable = true;
             }
-
 
             // 3.3.6 Rotates & shifts
 
             // 1. RLCA
-
             0x07 => {
                 self.a = self.rlca_8(self.a);
             }
 
             // 2. RLA
-            0x17 => { self.a = self.rl_8(self.a); }
+            0x17 => {
+                self.a = self.rl_8(self.a);
+            }
 
             // 3. RRCA
             0x0F => {
@@ -813,10 +812,9 @@ impl ProcessingUnit {
             }
 
             // 3. RETI
-
             0xD9 => {
-                self.ret();
-                self.master_interrupt_enabled = true;
+                self.interrupt_master_enable = true;
+                self.pc = self.read_sp_u16();
             }
 
             0xC8 => {
