@@ -275,18 +275,9 @@ impl ProcessingUnit {
         self.set_hl(nn)
     }
 
-    fn call(&mut self) {
-        let nn = self.get_immediate_u16();
+    fn call(&mut self, nn: u16) {
         self.push_u16(self.pc);
         self.pc = nn;
-    }
-
-    fn ret(&mut self) {
-        let lsb = self.read_sp_u8() as u16;
-        let msb = self.read_sp_u8() as u16;
-
-        let dest = (msb << 8) | lsb;
-        self.pc = dest
     }
 
     fn rr_8(&mut self, v: u8) -> u8 {
@@ -371,6 +362,15 @@ impl ProcessingUnit {
     fn peek_sp(&self) -> u16 {
         let lsb = self.read_byte(self.sp) as u16;
         let msb = self.read_byte(self.sp.wrapping_add(1)) as u16;
+
+        (msb << 8) | lsb
+    }
+
+    fn read_sp_u16(&mut self) -> u16 {
+        let lsb = self.read_byte(self.sp) as u16;
+        self.sp = self.sp.wrapping_add(1);
+        let msb = self.read_byte(self.sp) as u16;
+        self.sp = self.sp.wrapping_add(1);
 
         (msb << 8) | lsb
     }

@@ -159,17 +159,16 @@ impl ProcessingUnit {
                 self.set_hl(hl.wrapping_sub(1));
             }
 
-            // 13, 14, 15: LD A, (HLI)
-
+            // 13, 14, 15:
+            // LD A, (HLI)
+            // LD A, (HL+)
+            // LDI A, (HL)
             0x2a => {
                 self.lda_hli();
             }
 
             // 16, 17, 18: LDI (HL), A
-
-            0x22 => {
-                self.ldi_hla()
-            }
+            0x22 => self.ldi_hla(),
 
             // 19. LDH (n), A
             0xe0 => {
@@ -190,7 +189,6 @@ impl ProcessingUnit {
             0x01 => {
                 let nn = self.get_immediate_u16();
                 self.set_bc(nn);
-
             }
             0x11 => {
                 let nn = self.get_immediate_u16();
@@ -209,7 +207,6 @@ impl ProcessingUnit {
 
             // 3. LD HL, SP+n
             // 4. LDHL SP, n
-
             0xF8 => {
                 let v = (self.sp as i16 + self.get_immediate_i8() as i16) as u16;
                 self.set_hl(v);
@@ -232,7 +229,6 @@ impl ProcessingUnit {
             // 3.3.3 8-bit ALU
 
             // 1. ADD A,n
-
             0x87 => self.add_a(self.a),
             0x80 => self.add_a(self.b),
             0x81 => self.add_a(self.c),
@@ -247,7 +243,6 @@ impl ProcessingUnit {
             }
 
             // 2. ADC A, n
-
             0x8F => self.adc(self.a),
             0x88 => self.adc(self.b),
             0x89 => self.adc(self.c),
@@ -261,9 +256,7 @@ impl ProcessingUnit {
                 self.adc(n)
             }
 
-
             // 3. SUB n
-
             0x97 => self.sub_a(self.a),
             0x90 => self.sub_a(self.b),
             0x91 => self.sub_a(self.c),
@@ -315,7 +308,6 @@ impl ProcessingUnit {
                 self.or(param)
             }
 
-
             // 7. XOR n
             0xAF => self.xor(self.a),
             0xA8 => self.xor(self.b),
@@ -330,15 +322,14 @@ impl ProcessingUnit {
                 self.xor(param)
             }
 
-
             // 8. CP n
-            0xBF => { self.compare_a_with(self.a) }
-            0xB8 => { self.compare_a_with(self.b) }
-            0xB9 => { self.compare_a_with(self.c) }
-            0xBA => { self.compare_a_with(self.d) }
-            0xBC => { self.compare_a_with(self.h) }
-            0xBD => { self.compare_a_with(self.l) }
-            0xBE => { self.compare_a_with(self.read_byte(self.get_hl())) }
+            0xBF => self.compare_a_with(self.a),
+            0xB8 => self.compare_a_with(self.b),
+            0xB9 => self.compare_a_with(self.c),
+            0xBA => self.compare_a_with(self.d),
+            0xBC => self.compare_a_with(self.h),
+            0xBD => self.compare_a_with(self.l),
+            0xBE => self.compare_a_with(self.read_byte(self.get_hl())),
             0xFE => {
                 let param = self.get_immediate_u8();
                 self.compare_a_with(param)
@@ -397,7 +388,6 @@ impl ProcessingUnit {
             }
 
             // 10. DEC n
-
             0x3D => {
                 let prev = self.a;
                 self.a = self.a.wrapping_sub(1);
@@ -441,7 +431,6 @@ impl ProcessingUnit {
                 self.dec_flags(prev, r);
             }
 
-
             // 3.3.4 16-bit Arithmetic
 
             // 1. ADD HL,n
@@ -451,18 +440,16 @@ impl ProcessingUnit {
             0x39 => self.add_hl_16(self.sp),
 
             // 3. INC nn
-
-            0x03 => { self.set_bc(self.get_bc().wrapping_add(1)) }
-            0x13 => { self.set_de(self.get_de().wrapping_add(1)) }
-            0x23 => { self.set_hl(self.get_hl().wrapping_add(1)) }
-            0x33 => { self.sp = self.sp.wrapping_add(1) }
+            0x03 => self.set_bc(self.get_bc().wrapping_add(1)),
+            0x13 => self.set_de(self.get_de().wrapping_add(1)),
+            0x23 => self.set_hl(self.get_hl().wrapping_add(1)),
+            0x33 => self.sp = self.sp.wrapping_add(1),
 
             // 4. DEC nn
-
-            0x0b => { self.set_bc(self.get_bc().wrapping_sub(1)) }
-            0x1b => { self.set_de(self.get_de().wrapping_sub(1)) }
-            0x2b => { self.set_hl(self.get_hl().wrapping_sub(1)) }
-            0x3b => { self.sp = self.sp.wrapping_sub(1) }
+            0x0b => self.set_bc(self.get_bc().wrapping_sub(1)),
+            0x1b => self.set_de(self.get_de().wrapping_sub(1)),
+            0x2b => self.set_hl(self.get_hl().wrapping_sub(1)),
+            0x3b => self.sp = self.sp.wrapping_sub(1),
 
             // 3.3.5 Miscellaneous
 
@@ -538,7 +525,6 @@ impl ProcessingUnit {
                 let npc = pc + 1;
                 self.pc += 1;
                 match self.read_byte(npc) {
-
                     // 3.3.5. Miscellaneous
 
                     // 1. SWAP n
@@ -558,7 +544,6 @@ impl ProcessingUnit {
                     // 3.3.7. Bit Opcodes
 
                     // 1. BIT b, r
-
                     op @ 0x40..=0x7f => {
                         let r = op & 0b111;
                         let b = ((op >> 3) & 0b111) as usize;
@@ -571,12 +556,11 @@ impl ProcessingUnit {
                             0b011 => Self::bit(b, &mut self.e, &mut self.f),
                             0b100 => Self::bit(b, &mut self.h, &mut self.f),
                             0b101 => Self::bit(b, &mut self.l, &mut self.f),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                     }
 
                     // 2. SET b, r
-
                     op @ 0xc0..=0xff => {
                         let r = op & 0b111;
                         let b = ((op >> 3) & 0b111) as usize;
@@ -589,12 +573,11 @@ impl ProcessingUnit {
                             0b011 => self.e.set_bit(b, true),
                             0b100 => self.h.set_bit(b, true),
                             0b101 => self.l.set_bit(b, true),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                     }
 
                     // 3. RES b,r
-
                     op @ 0x80..=0xbf => {
                         let r = op & 0b111;
                         let b = ((op >> 3) & 0b111) as usize;
@@ -607,10 +590,9 @@ impl ProcessingUnit {
                             0b011 => self.e.set_bit(b, false),
                             0b100 => self.h.set_bit(b, false),
                             0b101 => self.l.set_bit(b, false),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                     }
-
 
                     // 3.3.6. Rotates & Shifts
 
@@ -629,7 +611,6 @@ impl ProcessingUnit {
                     }
 
                     // 8. RR n
-
                     0x1F => self.a = self.rr_8(self.a),
                     0x18 => self.b = self.rr_8(self.b),
                     0x19 => self.c = self.rr_8(self.c),
@@ -644,7 +625,6 @@ impl ProcessingUnit {
                     }
 
                     // 9. SLA n
-
                     0x27 => {
                         let a = self.a;
                         self.a = ((a as i8) << 1) as u8;
@@ -655,7 +635,6 @@ impl ProcessingUnit {
                     }
 
                     // 11. SRL n
-
                     0x3F => {
                         let a = self.a;
                         self.a = ((a as i8) >> 1) as u8;
@@ -675,7 +654,12 @@ impl ProcessingUnit {
                     }
 
                     _ => {
-                        println!("Unimplemented under 0xCB at pc={:x}, op={:x}: {}", npc, self.read_byte(npc), lookup_cb_prefix_op_code(self.read_byte(npc)).0);
+                        println!(
+                            "Unimplemented under 0xCB at pc={:x}, op={:x}: {}",
+                            npc,
+                            self.read_byte(npc),
+                            lookup_cb_prefix_op_code(self.read_byte(npc)).0
+                        );
                         println!("{:?}", self);
                         unimplemented!()
                     }
@@ -685,31 +669,34 @@ impl ProcessingUnit {
             // 3.3.8 Jumps
 
             // 1. JP nn
-            0xC3 => { self.pc = self.get_immediate_u16() }
+            0xC3 => self.pc = self.get_immediate_u16(),
 
             // 2. JP cc,nn
-
             0xC2 => {
+                let nn = self.get_immediate_u16();
                 if !self.f.contains(Flags::ZERO) {
-                    self.pc = self.get_immediate_u16()
+                    self.pc = nn
                 }
             }
 
             0xCA => {
+                let nn = self.get_immediate_u16();
                 if self.f.contains(Flags::ZERO) {
-                    self.pc = self.get_immediate_u16()
+                    self.pc = nn
                 }
             }
 
             0xD2 => {
+                let nn = self.get_immediate_u16();
                 if !self.f.contains(Flags::CARRY) {
-                    self.pc = self.get_immediate_u16()
+                    self.pc = nn
                 }
             }
 
             0xDA => {
+                let nn = self.get_immediate_u16();
                 if self.f.contains(Flags::CARRY) {
-                    self.pc = self.get_immediate_u16()
+                    self.pc = nn
                 }
             }
 
@@ -723,7 +710,6 @@ impl ProcessingUnit {
                 let n = self.get_immediate_i8();
                 self.pc = ((self.pc as i16) + n as i16) as u16;
             }
-
 
             // 5. JR cc,n
 
@@ -759,31 +745,37 @@ impl ProcessingUnit {
             // 3.3.9 Calls
 
             // 1. CALL nn
-            0xCD => self.call(),
+            0xCD => {
+                let nn = self.get_immediate_u16();
+                self.call(nn)
+            }
 
             // 2. CALL cc,nn
-
             0xC4 => {
+                let nn = self.get_immediate_u16();
                 if !self.f.contains(Flags::ZERO) {
-                    self.call();
+                    self.call(nn);
                 }
             }
 
             0xCC => {
+                let nn = self.get_immediate_u16();
                 if self.f.contains(Flags::ZERO) {
-                    self.call();
+                    self.call(nn);
                 }
             }
 
             0xD4 => {
+                let nn = self.get_immediate_u16();
                 if !self.f.contains(Flags::CARRY) {
-                    self.call();
+                    self.call(nn);
                 }
             }
 
             0xDC => {
+                let nn = self.get_immediate_u16();
                 if self.f.contains(Flags::CARRY) {
-                    self.call();
+                    self.call(nn);
                 }
             }
 
@@ -802,12 +794,15 @@ impl ProcessingUnit {
             // 3.3.11 Returns
 
             // 1. RET
-            0xC9 => self.ret(),
+            0xC9 => {
+                self.pc = self.read_sp_u16();
+            }
 
             // 2. RET cc
             0xC0 => {
+                let nn = self.read_sp_u16();
                 if !self.f.contains(Flags::ZERO) {
-                    self.ret();
+                    self.pc = nn;
                 }
             }
 
@@ -818,20 +813,23 @@ impl ProcessingUnit {
             }
 
             0xC8 => {
+                let nn = self.read_sp_u16();
                 if self.f.contains(Flags::ZERO) {
-                    self.ret();
+                    self.pc = nn;
                 }
             }
 
             0xD0 => {
+                let nn = self.read_sp_u16();
                 if !self.f.contains(Flags::CARRY) {
-                    self.ret();
+                    self.pc = nn;
                 }
             }
 
             0xD8 => {
+                let nn = self.read_sp_u16();
                 if self.f.contains(Flags::CARRY) {
-                    self.ret();
+                    self.pc = nn;
                 }
             }
 
@@ -854,7 +852,12 @@ impl ProcessingUnit {
             }
 
             _ => {
-                println!("Unimplemented at pc={:x}, op={:x}: {}", pc, self.read_byte(pc), lookup_op_code(self.read_byte(pc)).0);
+                println!(
+                    "Unimplemented at pc={:x}, op={:x}: {}",
+                    pc,
+                    self.read_byte(pc),
+                    lookup_op_code(self.read_byte(pc)).0
+                );
                 println!("{:?}", self);
                 unimplemented!()
             }
