@@ -152,11 +152,24 @@ impl ProcessingUnit {
                 self.write_byte(addr, self.a);
             }
 
-            // 10, 11, 12: LDD (HL), A
+            // 7, 8, 9:
+            // LD A, (HLD)
+            // LD A, (HL-)
+            // LDD A, (HL)
+            0x3a => {
+                let hl = self.get_hl().wrapping_sub(1);
+                self.set_hl(hl);
+                self.a = self.read_byte(hl);
+            }
+
+            // 10, 11, 12:
+            // LD (HLD), A
+            // LD (HL-), A
+            // LDD (HL), A
             0x32 => {
-                let hl = self.get_hl();
+                let hl = self.get_hl().wrapping_sub(1);
+                self.set_hl(hl);
                 self.write_byte(hl, self.a);
-                self.set_hl(hl.wrapping_sub(1));
             }
 
             // 13, 14, 15:
@@ -167,7 +180,10 @@ impl ProcessingUnit {
                 self.lda_hli();
             }
 
-            // 16, 17, 18: LDI (HL), A
+            // 16, 17, 18:
+            // LD (HLI), A
+            // LD (HL+), A
+            // LDI (HL), A
             0x22 => self.ldi_hla(),
 
             // 19. LDH (n), A
