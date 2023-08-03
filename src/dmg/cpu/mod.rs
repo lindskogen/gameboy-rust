@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::io::{stdout, Write};
 use std::ops::{BitAnd, BitOr};
 use std::rc::Rc;
 
@@ -44,6 +43,21 @@ pub struct ProcessingUnit {
 }
 
 impl ProcessingUnit {
+    pub fn initialize_gameboy_doctor(&mut self) {
+        self.enable_debugging = true;
+        self.a = 0x01;
+        self.f = Flags::CARRY | Flags::H | Flags::ZERO;
+        assert_eq!(self.f.bits, 0xb0);
+        self.b = 0x00;
+        self.c = 0x13;
+        self.d = 0x00;
+        self.e = 0xd8;
+        self.h = 0x01;
+        self.l = 0x4d;
+        self.sp = 0xFFFE;
+        self.pc = 0x0100;
+    }
+
     pub fn new(bus: Rc<RefCell<MemoryBus>>) -> ProcessingUnit {
         ProcessingUnit {
             a: 0,
@@ -67,14 +81,13 @@ impl ProcessingUnit {
     }
 
     fn swap(&mut self, n: u8) -> u8 {
-        let r = n.swap_bytes();
 
-        self.f.set(Flags::ZERO, r == 0);
+        self.f.set(Flags::ZERO, n == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
         self.f.remove(Flags::CARRY);
 
-        r
+        (n >> 4) | (n << 4)
     }
 
     fn get_carry(&self) -> u8 {
@@ -133,20 +146,25 @@ impl ProcessingUnit {
     }
 
     fn write_byte(&mut self, addr: u16, value: u8) {
-        // if addr == 0xff00 {
-        //     println!("Write {:04x} {:x}", addr, value);
-        // }
+        self.bus.borrow_mut().write_byte(addr, value);
+    }
 
-        if addr == 0xff50 {
-            self.enable_debugging = true;
+    fn daa(&mut self) {
+        let mut adjust = if self.f.contains(Flags::CARRY) { 0x60 } else { 0 };
+
+        if self.f.contains(Flags::H) { adjust |= 0x06; };
+
+        if !self.f.contains(Flags::N) {
+            if self.a & 0x0f > 0x09 { adjust |= 0x06; };
+            if self.a > 0x99 { adjust |= 0x60; };
+            self.a = self.a.wrapping_add(adjust);
+        } else {
+            self.a = self.a.wrapping_sub(adjust);
         }
 
-        match addr {
-            0xff01 => {
-                print!("{}", value as char);
-            }
-            _ => self.bus.borrow_mut().write_byte(addr, value),
-        }
+        self.f.set(Flags::CARRY, adjust >= 0x60);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::ZERO, self.a == 0);
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
@@ -162,28 +180,10 @@ impl ProcessingUnit {
     }
 
     pub fn debug_print(&self, pc: u16) {
-        if !self.enable_debugging {
-            return;
+        if self.enable_debugging {
+            println!("A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, pc, self.read_byte(pc), self.read_byte(pc+1), self.read_byte(pc+2), self.read_byte(pc+3));
         }
 
-        let op_code = self.lookup_op_code_for_pc(pc).0;
-
-        // Logging registers in pairs like bgb
-        // println!("{:5x}: {:<10}\ta: {:2x}, b: {:2x}, c: {:2x}, d: {:2x}, e: {:2x}, h: {:2x}, l: {:2x}, sp: {:4x}, flags: {:?}", pc, op_code, self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.f)
-        println!(
-            "{:5x}: {:<10}\taf: {:04x}, bc: {:04x}, de: {:04x}, hl: {:04x}, sp: {:04x}, (sp): {:04x}, ly: {}, lc: {}, flags: {:?}",
-            pc,
-            op_code,
-            self.get_af(),
-            self.get_bc(),
-            self.get_de(),
-            self.get_hl(),
-            self.sp,
-            self.peek_sp(),
-            self.read_byte(0xff44), // ly
-            self.read_byte(0xff45), // lc
-            self.f
-        )
     }
 
     fn lookup_op_code_for_pc(&self, pc: u16) -> (&str, u32) {
@@ -229,10 +229,10 @@ impl ProcessingUnit {
     fn check_and_execute_interrupts(&mut self) {
         if self.interrupt_master_enable
             && self
-                .bus
-                .borrow()
-                .interrupt_enable
-                .intersects(self.bus.borrow().ppu.interrupt_flag)
+            .bus
+            .borrow()
+            .interrupt_enable
+            .intersects(self.bus.borrow().ppu.interrupt_flag)
         {
             let interrupt_flags = self.bus.borrow().ppu.interrupt_flag;
             if let Some(addr) = interrupt_flags.interrupt_starting_address() {
@@ -261,18 +261,26 @@ impl ProcessingUnit {
     }
 
     fn lda_hli(&mut self) {
-        let hl = self.get_hl();
+        let hl = self.hli();
         self.a = self.read_byte(hl);
+    }
 
+    fn hli(&mut self) -> u16 {
+        let hl = self.get_hl();
         self.set_hl(hl.wrapping_add(1));
+        hl
+    }
+
+    fn hld(&mut self) -> u16 {
+        let hl = self.get_hl();
+        self.set_hl(hl.wrapping_sub(1));
+        hl
     }
 
     fn ldi_hla(&mut self) {
         self.ld_hl(self.a);
 
-        let n = self.get_hl();
-        let nn = n.wrapping_add(1);
-        self.set_hl(nn)
+        self.hli();
     }
 
     fn call(&mut self, nn: u16) {
@@ -293,7 +301,7 @@ impl ProcessingUnit {
         v
     }
 
-    fn rrca_8(&mut self, v: u8) -> u8 {
+    fn rrc_8(&mut self, v: u8) -> u8 {
         let carry = v.get_bit(0);
         let mut v = v >> 1;
         v.set_bit(7, carry);
@@ -319,7 +327,7 @@ impl ProcessingUnit {
         v
     }
 
-    fn rlca_8(&mut self, v: u8) -> u8 {
+    fn rlc_8(&mut self, v: u8) -> u8 {
         let carry = v.get_bit(7);
         let mut v = v << 1;
         v.set_bit(0, carry);
@@ -385,6 +393,7 @@ impl ProcessingUnit {
     fn dec_flags(&mut self, prev: u8, n: u8) {
         self.f.set(Flags::ZERO, n == 0);
         self.f.insert(Flags::N);
+        self.set_half_carry(prev, n);
         self.f.set(Flags::H, (prev & 0xf0) != (n & 0xf0));
     }
 
@@ -405,7 +414,7 @@ impl ProcessingUnit {
         let (nn, overflow) = self.a.overflowing_sub(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.insert(Flags::N);
-        self.set_half_carry(self.a, nn);
+        self.f.set(Flags::H, (self.a & 0xf) < (n & 0xf));
         self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
@@ -414,8 +423,7 @@ impl ProcessingUnit {
         let (nn, overflow) = self.a.overflowing_add(n);
         self.f.set(Flags::ZERO, nn == 0);
         self.f.remove(Flags::N);
-        self.f
-            .set(Flags::H, (((self.a & 0xf) + (n & 0xf)) & 0x10) > 0);
+        self.f.set(Flags::H, (((self.a & 0xf) + (n & 0xf)) & 0x10) > 0);
         self.f.set(Flags::CARRY, overflow);
         self.a = nn;
     }
@@ -445,17 +453,17 @@ impl ProcessingUnit {
 
     fn adc(&mut self, n: u8) {
         let carry = self.get_carry();
-        let (aa, overflow) = self.a.overflowing_add(n + carry);
+        let r = self.a.wrapping_add(n).wrapping_add(carry);
 
-        self.f.set(Flags::ZERO, aa == 0);
+        self.f.set(Flags::ZERO, r == 0);
         self.f.remove(Flags::N);
-        self.set_half_carry(self.a, aa);
-        self.f.set(Flags::CARRY, overflow);
+        self.f.set(Flags::H, (self.a & 0xf) + (n & 0xf) + carry > 0xf);
+        self.f.set(Flags::CARRY, (self.a as u16) + (n as u16) + (carry as u16) > 0xff);
 
-        self.a = aa;
+        self.a = r;
     }
 
-    fn bit(bit: usize, reg: &mut u8, flags: &mut Flags) {
+    fn bit(bit: usize, reg: u8, flags: &mut Flags) {
         flags.set(Flags::ZERO, !reg.get_bit(bit));
         flags.remove(Flags::N);
         flags.insert(Flags::H);
@@ -463,14 +471,14 @@ impl ProcessingUnit {
 
     fn sbc(&mut self, n: u8) {
         let carry = self.get_carry();
-        let (aa, overflow) = self.a.overflowing_sub(n.wrapping_add(carry));
+        let r = self.a.wrapping_sub(n).wrapping_sub(carry);
 
-        self.f.set(Flags::ZERO, aa == 0);
-        self.f.remove(Flags::N);
-        self.set_half_carry(self.a, aa);
-        self.f.set(Flags::CARRY, overflow);
+        self.f.set(Flags::ZERO, r == 0);
+        self.f.set(Flags::H, (self.a & 0x0f) < (n & 0x0f) + carry);
+        self.f.insert(Flags::N);
+        self.f.set(Flags::CARRY,  (self.a as u16) < (n as u16) + (carry as u16));
 
-        self.a = aa;
+        self.a = r;
     }
 }
 

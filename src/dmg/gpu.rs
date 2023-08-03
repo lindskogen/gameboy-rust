@@ -123,6 +123,8 @@ pub struct GPU {
     lc: u8,
     bgp: u8,
 
+    timer: u8,
+
     cycles: u32,
     pub interrupt_flag: InterruptFlag,
 }
@@ -150,6 +152,8 @@ impl GPU {
             ly: 0x00,
             lc: 0x00,
             bgp: 0x00,
+
+            timer: 0x00,
 
             cycles: 0,
             interrupt_flag: InterruptFlag::empty(),
@@ -259,7 +263,12 @@ impl GPU {
             }
             0xff42 => self.scy,
             0xff43 => self.scx,
-            0xff44 => self.ly,
+            0xff07 => self.timer,
+            0xff44 => {
+                // Hard coded value for gameboy-doctor
+                // // 0x90
+                self.ly
+            },
             0xff45 => self.lc,
             0xff47 => self.bgp,
             0xff4a => self.wx,
@@ -285,6 +294,10 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
+            0xff07 => {
+                eprintln!("ROM uses timer features");
+                self.timer = value
+            },
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
         }

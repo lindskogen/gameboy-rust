@@ -12,7 +12,7 @@ fn main() {
     let game_rom = env::args().nth(1);
 
     if let Some(name) = &game_rom {
-        println!("Loading {}", name);
+        eprintln!("Loading {}", name);
     }
 
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
@@ -29,6 +29,8 @@ fn main() {
     let delta = Duration::from_micros(16600);
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
+
+    // core.initialize_gameboy_doctor();
 
     let title = core.read_rom_name();
 

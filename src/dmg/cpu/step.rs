@@ -157,8 +157,7 @@ impl ProcessingUnit {
             // LD A, (HL-)
             // LDD A, (HL)
             0x3a => {
-                let hl = self.get_hl().wrapping_sub(1);
-                self.set_hl(hl);
+                let hl = self.hld();
                 self.a = self.read_byte(hl);
             }
 
@@ -167,8 +166,8 @@ impl ProcessingUnit {
             // LD (HL-), A
             // LDD (HL), A
             0x32 => {
-                let hl = self.get_hl().wrapping_sub(1);
-                self.set_hl(hl);
+                let hl = self.hld();
+
                 self.write_byte(hl, self.a);
             }
 
@@ -237,10 +236,10 @@ impl ProcessingUnit {
             }
 
             // 6. PUSH nn
-            0xF5 => self.push_u16(self.get_af()),
             0xC5 => self.push_u16(self.get_bc()),
             0xD5 => self.push_u16(self.get_de()),
             0xE5 => self.push_u16(self.get_hl()),
+            0xF5 => self.push_u16(self.get_af()),
 
             // 3.3.3 8-bit ALU
 
@@ -295,6 +294,10 @@ impl ProcessingUnit {
             0x9c => self.sbc(self.h),
             0x9d => self.sbc(self.l),
             0x9e => self.sbc(self.read_byte(self.get_hl())),
+            0xDE => {
+                let n = self.get_immediate_u8();
+                self.sbc(n);
+            },
 
             // 5. AND n
             0xa7 => self.and(self.a),
@@ -470,6 +473,12 @@ impl ProcessingUnit {
 
             // 3.3.5 Miscellaneous
 
+            // 2. DAA
+
+            0x27 => {
+                self.daa();
+            }
+
             // 3. CPL
             0x2f => {
                 self.a = !self.a;
@@ -520,22 +529,26 @@ impl ProcessingUnit {
 
             // 1. RLCA
             0x07 => {
-                self.a = self.rlca_8(self.a);
+                self.a = self.rlc_8(self.a);
+                self.f.remove(Flags::ZERO);
             }
 
             // 2. RLA
             0x17 => {
                 self.a = self.rl_8(self.a);
+                self.f.remove(Flags::ZERO);
             }
 
             // 3. RRCA
             0x0F => {
-                self.rrca_8(self.a);
+                self.a = self.rrc_8(self.a);
+                self.f.remove(Flags::ZERO);
             }
 
             // 4. RRA
             0x1F => {
-                self.rr_8(self.a);
+                self.a = self.rr_8(self.a);
+                self.f.remove(Flags::ZERO);
             }
 
             0xCB => {
@@ -566,13 +579,14 @@ impl ProcessingUnit {
                         let b = ((op >> 3) & 0b111) as usize;
 
                         match r {
-                            0b111 => Self::bit(b, &mut self.a, &mut self.f),
-                            0b000 => Self::bit(b, &mut self.b, &mut self.f),
-                            0b001 => Self::bit(b, &mut self.c, &mut self.f),
-                            0b010 => Self::bit(b, &mut self.d, &mut self.f),
-                            0b011 => Self::bit(b, &mut self.e, &mut self.f),
-                            0b100 => Self::bit(b, &mut self.h, &mut self.f),
-                            0b101 => Self::bit(b, &mut self.l, &mut self.f),
+                            0b111 => Self::bit(b, self.a, &mut self.f),
+                            0b000 => Self::bit(b, self.b, &mut self.f),
+                            0b001 => Self::bit(b, self.c, &mut self.f),
+                            0b010 => Self::bit(b, self.d, &mut self.f),
+                            0b011 => Self::bit(b, self.e, &mut self.f),
+                            0b100 => Self::bit(b, self.h, &mut self.f),
+                            0b101 => Self::bit(b, self.l, &mut self.f),
+                            0b110 => Self::bit(b, self.read_byte(self.get_hl()), &mut self.f),
                             _ => unreachable!(),
                         };
                     }
@@ -583,13 +597,19 @@ impl ProcessingUnit {
                         let b = ((op >> 3) & 0b111) as usize;
 
                         match r {
-                            0b111 => self.a.set_bit(b, true),
-                            0b000 => self.b.set_bit(b, true),
-                            0b001 => self.c.set_bit(b, true),
-                            0b010 => self.d.set_bit(b, true),
-                            0b011 => self.e.set_bit(b, true),
-                            0b100 => self.h.set_bit(b, true),
-                            0b101 => self.l.set_bit(b, true),
+                            0b111 => { self.a.set_bit(b, true); },
+                            0b000 => { self.b.set_bit(b, true); },
+                            0b001 => { self.c.set_bit(b, true); },
+                            0b010 => { self.d.set_bit(b, true); },
+                            0b011 => { self.e.set_bit(b, true); },
+                            0b100 => { self.h.set_bit(b, true); },
+                            0b101 => { self.l.set_bit(b, true); },
+                            0b110 => {
+                                let hl = self.get_hl();
+                                let mut v = self.read_byte(hl);
+                                v.set_bit(b, true);
+                                self.write_byte(hl, v);
+                            }
                             _ => unreachable!(),
                         };
                     }
@@ -600,18 +620,39 @@ impl ProcessingUnit {
                         let b = ((op >> 3) & 0b111) as usize;
 
                         match r {
-                            0b111 => self.a.set_bit(b, false),
-                            0b000 => self.b.set_bit(b, false),
-                            0b001 => self.c.set_bit(b, false),
-                            0b010 => self.d.set_bit(b, false),
-                            0b011 => self.e.set_bit(b, false),
-                            0b100 => self.h.set_bit(b, false),
-                            0b101 => self.l.set_bit(b, false),
+                            0b111 => { self.a.set_bit(b, false); },
+                            0b000 => { self.b.set_bit(b, false); },
+                            0b001 => { self.c.set_bit(b, false); },
+                            0b010 => { self.d.set_bit(b, false); },
+                            0b011 => { self.e.set_bit(b, false); },
+                            0b100 => { self.h.set_bit(b, false); },
+                            0b101 => { self.l.set_bit(b, false); },
+                            0b110 => {
+                                let hl = self.get_hl();
+                                let mut v = self.read_byte(hl);
+                                v.set_bit(b, false);
+                                self.write_byte(hl, v);
+                            }
                             _ => unreachable!(),
                         };
                     }
 
                     // 3.3.6. Rotates & Shifts
+
+                    // 5. RLC n
+
+                    0x07 => self.a = self.rlc_8(self.a),
+                    0x00 => self.b = self.rlc_8(self.b),
+                    0x01 => self.c = self.rlc_8(self.c),
+                    0x02 => self.d = self.rlc_8(self.d),
+                    0x03 => self.e = self.rlc_8(self.e),
+                    0x04 => self.h = self.rlc_8(self.h),
+                    0x05 => self.l = self.rlc_8(self.l),
+                    0x06 => {
+                        let hl = self.get_hl();
+                        let r = self.rlc_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
+                    }
 
                     // 6. RL n
                     0x17 => self.a = self.rl_8(self.a),
@@ -624,6 +665,21 @@ impl ProcessingUnit {
                     0x16 => {
                         let hl = self.get_hl();
                         let r = self.rl_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
+                    }
+
+                    // 7. RLC n
+
+                    0x0f => self.a = self.rrc_8(self.a),
+                    0x08 => self.b = self.rrc_8(self.b),
+                    0x09 => self.c = self.rrc_8(self.c),
+                    0x0a => self.d = self.rrc_8(self.d),
+                    0x0b => self.e = self.rrc_8(self.e),
+                    0x0c => self.h = self.rrc_8(self.h),
+                    0x0d => self.l = self.rrc_8(self.l),
+                    0x0e => {
+                        let hl = self.get_hl();
+                        let r = self.rrc_8(self.read_byte(hl));
                         self.write_byte(hl, r);
                     }
 
@@ -642,32 +698,46 @@ impl ProcessingUnit {
                     }
 
                     // 9. SLA n
-                    0x27 => {
-                        let a = self.a;
-                        self.a = ((a as i8) << 1) as u8;
-                        self.f.set(Flags::ZERO, self.a == 0);
-                        self.f.remove(Flags::N);
-                        self.f.remove(Flags::H);
-                        self.f.set(Flags::CARRY, (0x80 & a) != 0)
+                    0x27 => self.a = self.sla_8(self.a),
+                    0x20 => self.b = self.sla_8(self.b),
+                    0x21 => self.c = self.sla_8(self.c),
+                    0x22 => self.d = self.sla_8(self.d),
+                    0x23 => self.e = self.sla_8(self.e),
+                    0x24 => self.h = self.sla_8(self.h),
+                    0x25 => self.l = self.sla_8(self.l),
+                    0x26 => {
+                        let hl = self.get_hl();
+                        let r = self.sla_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
+                    },
+
+                    // 10. SRA n
+
+                    0x2f => self.a = self.sra_8(self.a),
+                    0x28 => self.b = self.sra_8(self.b),
+                    0x29 => self.c = self.sra_8(self.c),
+                    0x2A => self.d = self.sra_8(self.d),
+                    0x2B => self.e = self.sra_8(self.e),
+                    0x2C => self.h = self.sra_8(self.h),
+                    0x2D => self.l = self.sra_8(self.l),
+                    0x2E => {
+                        let hl = self.get_hl();
+                        let r = self.sra_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
                     }
 
                     // 11. SRL n
-                    0x3F => {
-                        let a = self.a;
-                        self.a = ((a as i8) >> 1) as u8;
-                        self.f.set(Flags::ZERO, self.a == 0);
-                        self.f.remove(Flags::N);
-                        self.f.remove(Flags::H);
-                        self.f.set(Flags::CARRY, (0b1 & a) != 0)
-                    }
-
-                    0x38 => {
-                        let b = self.b;
-                        self.b = ((b as i8) >> 1) as u8;
-                        self.f.set(Flags::ZERO, self.b == 0);
-                        self.f.remove(Flags::N);
-                        self.f.remove(Flags::H);
-                        self.f.set(Flags::CARRY, (0b1 & b) != 0)
+                    0x3F => self.a = self.srl_8(self.a),
+                    0x38 => self.b = self.srl_8(self.b),
+                    0x39 => self.c = self.srl_8(self.c),
+                    0x3A => self.d = self.srl_8(self.d),
+                    0x3B => self.e = self.srl_8(self.e),
+                    0x3C => self.h = self.srl_8(self.h),
+                    0x3D => self.l = self.srl_8(self.l),
+                    0x3E => {
+                        let hl = self.get_hl();
+                        let r = self.srl_8(self.read_byte(hl));
+                        self.write_byte(hl, r);
                     }
 
                     _ => {
@@ -817,8 +887,8 @@ impl ProcessingUnit {
 
             // 2. RET cc
             0xC0 => {
-                let nn = self.read_sp_u16();
                 if !self.f.contains(Flags::ZERO) {
+                    let nn = self.read_sp_u16();
                     self.pc = nn;
                 }
             }
@@ -830,22 +900,22 @@ impl ProcessingUnit {
             }
 
             0xC8 => {
-                let nn = self.read_sp_u16();
                 if self.f.contains(Flags::ZERO) {
+                    let nn = self.read_sp_u16();
                     self.pc = nn;
                 }
             }
 
             0xD0 => {
-                let nn = self.read_sp_u16();
                 if !self.f.contains(Flags::CARRY) {
+                    let nn = self.read_sp_u16();
                     self.pc = nn;
                 }
             }
 
             0xD8 => {
-                let nn = self.read_sp_u16();
                 if self.f.contains(Flags::CARRY) {
+                    let nn = self.read_sp_u16();
                     self.pc = nn;
                 }
             }
@@ -864,7 +934,7 @@ impl ProcessingUnit {
                 self.h = self.read_sp_u8();
             }
             0xF1 => {
-                self.f.bits = self.read_sp_u8();
+                self.f.bits = self.read_sp_u8() & 0xf0;
                 self.a = self.read_sp_u8();
             }
 
@@ -883,5 +953,37 @@ impl ProcessingUnit {
         let cycles = self.lookup_op_code_for_pc(pc).1;
         self.cycles = self.cycles.wrapping_add(cycles);
         return cycles;
+    }
+
+    fn set_slr_flags(&mut self, c: bool, r: u8) {
+        self.f.set(Flags::ZERO, r == 0);
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::H);
+        self.f.set(Flags::CARRY, c);
+    }
+
+
+    fn sla_8(&mut self, v: u8) -> u8 {
+        let c = (0x80 & v) == 0x80;
+        let r = v << 1;
+        self.set_slr_flags(c, r);
+
+        r
+    }
+
+    fn sra_8(&mut self, v: u8) -> u8 {
+        let c = v & 0x01 == 0x01;
+        let r = (v >> 1) | (v & 0x80);
+        self.set_slr_flags(c, r);
+
+        r
+    }
+
+    fn srl_8(&mut self, v: u8) -> u8 {
+        let c = v & 0x01 == 0x01;
+        let r = v >> 1;
+        self.set_slr_flags(c, r);
+
+        r
     }
 }
