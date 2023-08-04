@@ -1,6 +1,6 @@
 use bit_field::BitField;
 
-use crate::dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
+use crate::dmg::debug::lookup_op_code;
 
 use super::Flags;
 use super::ProcessingUnit;
@@ -744,17 +744,6 @@ impl ProcessingUnit {
                         let hl = self.get_hl();
                         let r = self.srl_8(self.read_byte(hl));
                         self.write_byte(hl, r);
-                    }
-
-                    _ => {
-                        println!(
-                            "Unimplemented under 0xCB at pc={:x}, op={:x}: {}",
-                            npc,
-                            self.read_byte(npc),
-                            lookup_cb_prefix_op_code(self.read_byte(npc)).0
-                        );
-                        println!("{:?}", self);
-                        unimplemented!()
                     }
                 }
             }

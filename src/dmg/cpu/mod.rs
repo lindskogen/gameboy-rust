@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::ops::{BitAnd, BitOr};
 use std::rc::Rc;
 
 use bit_field::BitField;
@@ -376,13 +375,6 @@ impl ProcessingUnit {
     fn reset_and_set_zero(&mut self, n: u8) {
         self.f.bits = 0;
         self.f.set(Flags::ZERO, n == 0);
-    }
-
-    fn peek_sp(&self) -> u16 {
-        let lsb = self.read_byte(self.sp) as u16;
-        let msb = self.read_byte(self.sp.wrapping_add(1)) as u16;
-
-        (msb << 8) | lsb
     }
 
     fn read_sp_u16(&mut self) -> u16 {
