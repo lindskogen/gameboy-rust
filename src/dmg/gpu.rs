@@ -126,6 +126,7 @@ pub struct GPU {
     timer: u8,
 
     cycles: u32,
+    enable_debug_override: bool,
     pub interrupt_flag: InterruptFlag,
 }
 
@@ -154,10 +155,15 @@ impl GPU {
             bgp: 0x00,
 
             timer: 0x00,
+            enable_debug_override: false,
 
             cycles: 0,
             interrupt_flag: InterruptFlag::empty(),
         }
+    }
+
+    pub fn initialize_gameboy_doctor(&mut self) {
+        self.enable_debug_override = true;
     }
 
     pub fn next(&mut self, elapsed: u32, buffer: &mut Vec<u32>) -> bool {
@@ -265,10 +271,13 @@ impl GPU {
             0xff43 => self.scx,
             0xff07 => self.timer,
             0xff44 => {
-                // Hard coded value for gameboy-doctor
-                // // 0x90
-                self.ly
-            },
+                if self.enable_debug_override {
+                    // Hard coded value for gameboy-doctor
+                    0x90
+                } else {
+                    self.ly
+                }
+            }
             0xff45 => self.lc,
             0xff47 => self.bgp,
             0xff4a => self.wx,
@@ -297,7 +306,7 @@ impl GPU {
             0xff07 => {
                 eprintln!("ROM uses timer features");
                 self.timer = value
-            },
+            }
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
         }

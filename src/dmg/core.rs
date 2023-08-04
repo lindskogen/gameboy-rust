@@ -48,6 +48,7 @@ impl Core {
 
     pub fn initialize_gameboy_doctor(&mut self) {
         self.cpu.initialize_gameboy_doctor();
+        self.bus.borrow_mut().ppu.initialize_gameboy_doctor();
     }
 
     pub fn step(&mut self, buffer: &mut Vec<u32>) -> bool {

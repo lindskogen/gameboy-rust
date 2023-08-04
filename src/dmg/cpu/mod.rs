@@ -249,6 +249,17 @@ impl ProcessingUnit {
         }
     }
 
+    fn add_16_imm(&mut self, a: u16) -> u16 {
+        let b = self.get_immediate_i8() as i16 as u16;
+
+        self.f.remove(Flags::N);
+        self.f.remove(Flags::ZERO);
+        self.f.set(Flags::H, (a & 0xf) + (b & 0xf) > 0xf);
+        self.f.set(Flags::CARRY, (a & 0xff) + (b & 0xff) > 0xff);
+
+        a.wrapping_add(b)
+    }
+
     fn add_hl_16(&mut self, hl: u16) {
         let prev = self.get_hl();
         let (new_hl, overflow) = prev.overflowing_add(hl);
@@ -340,7 +351,7 @@ impl ProcessingUnit {
         v
     }
 
-    fn xor(&mut self, n: u8) {
+    fn xor_a(&mut self, n: u8) {
         self.a = self.a ^ n;
         self.reset_and_set_zero(self.a);
     }
@@ -350,8 +361,12 @@ impl ProcessingUnit {
         self.write_byte(self.sp, n);
     }
 
+    fn get_bits(n: u16) -> (u8, u8) {
+        (((n & 0xff00) >> 8) as u8, (n & 0xff) as u8)
+    }
+
     fn push_u16(&mut self, n: u16) {
-        let (n_msb, n_lsb) = (((n & 0xff00) >> 8) as u8, (n & 0xff) as u8);
+        let (n_msb, n_lsb) = Self::get_bits(n);
         self.push_u8(n_msb);
         self.push_u8(n_lsb);
     }
@@ -429,21 +444,14 @@ impl ProcessingUnit {
     }
 
     fn and(&mut self, n: u8) {
-        let r = self.a.bitand(n);
-        self.f.set(Flags::ZERO, r == 0);
-        self.f.remove(Flags::N);
+        self.a =  self.a & n;
+        self.reset_and_set_zero(self.a);
         self.f.insert(Flags::H);
-        self.f.remove(Flags::CARRY);
-        self.a = r;
     }
 
     fn or(&mut self, n: u8) {
-        let r = self.a.bitor(n);
-        self.f.set(Flags::ZERO, r == 0);
-        self.f.remove(Flags::N);
-        self.f.remove(Flags::H);
-        self.f.remove(Flags::CARRY);
-        self.a = r;
+        self.a = self.a | n;
+        self.reset_and_set_zero(self.a);
     }
 
     fn rst(&mut self, addr: u16) {
@@ -639,7 +647,7 @@ mod tests {
     fn xor_a_works() {
         let mut cpu = setup_cpu_for_xor();
 
-        cpu.xor(cpu.a);
+        cpu.xor_a(cpu.a);
 
         assert_eq!(cpu.a, 0x00);
 
@@ -650,7 +658,7 @@ mod tests {
     fn xor_0f_works() {
         let mut cpu = setup_cpu_for_xor();
 
-        cpu.xor(0x0f);
+        cpu.xor_a(0x0f);
 
         assert_eq!(cpu.a, 0xf0);
 
@@ -661,7 +669,7 @@ mod tests {
     fn xor_hl_works() {
         let mut cpu = setup_cpu_for_xor();
 
-        cpu.xor(cpu.read_byte(cpu.get_hl()));
+        cpu.xor_a(cpu.read_byte(cpu.get_hl()));
 
         assert_eq!(cpu.a, 0x75);
 

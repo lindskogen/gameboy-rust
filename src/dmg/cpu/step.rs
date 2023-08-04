@@ -223,16 +223,18 @@ impl ProcessingUnit {
             // 3. LD HL, SP+n
             // 4. LDHL SP, n
             0xF8 => {
-                let v = (self.sp as i16 + self.get_immediate_i8() as i16) as u16;
-                self.set_hl(v);
+                let r = self.add_16_imm(self.sp);
+                self.set_hl(r);
             }
 
             // 5. LD (nn),SP
             0x08 => {
-                let addr = self.get_immediate_u16();
-                let (sp1, sp2) = ((self.sp & 0xff00 >> 8) as u8, (self.sp & 0xff) as u8);
-                self.write_byte(addr, sp1);
-                self.write_byte(addr + 1, sp2);
+                let lsb_addr = self.get_immediate_u16();
+                let msb_addr = lsb_addr.wrapping_add(1);
+                let (sp_msb, sp_lsb) = Self::get_bits(self.sp);
+
+                self.write_byte(lsb_addr, sp_lsb);
+                self.write_byte(msb_addr, sp_msb);
             }
 
             // 6. PUSH nn
@@ -297,7 +299,7 @@ impl ProcessingUnit {
             0xDE => {
                 let n = self.get_immediate_u8();
                 self.sbc(n);
-            },
+            }
 
             // 5. AND n
             0xa7 => self.and(self.a),
@@ -328,17 +330,17 @@ impl ProcessingUnit {
             }
 
             // 7. XOR n
-            0xAF => self.xor(self.a),
-            0xA8 => self.xor(self.b),
-            0xA9 => self.xor(self.c),
-            0xAA => self.xor(self.d),
-            0xAB => self.xor(self.e),
-            0xAC => self.xor(self.h),
-            0xAD => self.xor(self.l),
-            0xAE => self.xor(self.read_byte(self.get_hl())),
+            0xAF => self.xor_a(self.a),
+            0xA8 => self.xor_a(self.b),
+            0xA9 => self.xor_a(self.c),
+            0xAA => self.xor_a(self.d),
+            0xAB => self.xor_a(self.e),
+            0xAC => self.xor_a(self.h),
+            0xAD => self.xor_a(self.l),
+            0xAE => self.xor_a(self.read_byte(self.get_hl())),
             0xEE => {
                 let param = self.get_immediate_u8();
-                self.xor(param)
+                self.xor_a(param)
             }
 
             // 8. CP n
@@ -458,6 +460,10 @@ impl ProcessingUnit {
             0x19 => self.add_hl_16(self.get_de()),
             0x29 => self.add_hl_16(self.get_hl()),
             0x39 => self.add_hl_16(self.sp),
+
+            // 2. ADD SP,n
+
+            0xE8 => self.sp = self.add_16_imm(self.sp),
 
             // 3. INC nn
             0x03 => self.set_bc(self.get_bc().wrapping_add(1)),
@@ -597,13 +603,13 @@ impl ProcessingUnit {
                         let b = ((op >> 3) & 0b111) as usize;
 
                         match r {
-                            0b111 => { self.a.set_bit(b, true); },
-                            0b000 => { self.b.set_bit(b, true); },
-                            0b001 => { self.c.set_bit(b, true); },
-                            0b010 => { self.d.set_bit(b, true); },
-                            0b011 => { self.e.set_bit(b, true); },
-                            0b100 => { self.h.set_bit(b, true); },
-                            0b101 => { self.l.set_bit(b, true); },
+                            0b111 => { self.a.set_bit(b, true); }
+                            0b000 => { self.b.set_bit(b, true); }
+                            0b001 => { self.c.set_bit(b, true); }
+                            0b010 => { self.d.set_bit(b, true); }
+                            0b011 => { self.e.set_bit(b, true); }
+                            0b100 => { self.h.set_bit(b, true); }
+                            0b101 => { self.l.set_bit(b, true); }
                             0b110 => {
                                 let hl = self.get_hl();
                                 let mut v = self.read_byte(hl);
@@ -620,13 +626,13 @@ impl ProcessingUnit {
                         let b = ((op >> 3) & 0b111) as usize;
 
                         match r {
-                            0b111 => { self.a.set_bit(b, false); },
-                            0b000 => { self.b.set_bit(b, false); },
-                            0b001 => { self.c.set_bit(b, false); },
-                            0b010 => { self.d.set_bit(b, false); },
-                            0b011 => { self.e.set_bit(b, false); },
-                            0b100 => { self.h.set_bit(b, false); },
-                            0b101 => { self.l.set_bit(b, false); },
+                            0b111 => { self.a.set_bit(b, false); }
+                            0b000 => { self.b.set_bit(b, false); }
+                            0b001 => { self.c.set_bit(b, false); }
+                            0b010 => { self.d.set_bit(b, false); }
+                            0b011 => { self.e.set_bit(b, false); }
+                            0b100 => { self.h.set_bit(b, false); }
+                            0b101 => { self.l.set_bit(b, false); }
                             0b110 => {
                                 let hl = self.get_hl();
                                 let mut v = self.read_byte(hl);
@@ -709,7 +715,7 @@ impl ProcessingUnit {
                         let hl = self.get_hl();
                         let r = self.sla_8(self.read_byte(hl));
                         self.write_byte(hl, r);
-                    },
+                    }
 
                     // 10. SRA n
 
