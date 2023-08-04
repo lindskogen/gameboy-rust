@@ -25,6 +25,7 @@ pub struct MemoryBus {
     zram: [u8; ZRAM_SIZE],
     boot_rom_disabled: bool,
     mbc: MBCWrapper,
+    wram_bank: usize,
     boot_rom: [u8; 256],
     pub ppu: GPU,
     pub interrupt_enable: InterruptFlag,
@@ -35,6 +36,7 @@ impl Default for MemoryBus {
         MemoryBus {
             wram: [0x00; WRAM_SIZE],
             zram: [0x00; ZRAM_SIZE],
+            wram_bank: 1,
             mbc: MBCWrapper::default(),
             ppu: GPU::new(),
             boot_rom: [0x00; 256],
@@ -57,6 +59,7 @@ impl MemoryBus {
         MemoryBus {
             wram: [0x00; WRAM_SIZE],
             zram: [0x00; ZRAM_SIZE],
+            wram_bank: 1,
             mbc,
             boot_rom,
             boot_rom_disabled: false,
@@ -71,24 +74,38 @@ impl MemoryBus {
         match address {
             0x0000..=0x7fff => self.mbc.write_rom(address, value),
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
-            0xa000..=0xbfff => self.mbc.write_ram(address, value),
-            0xff46 => {
-                self.dma_transfer(value);
+            0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff] = value,
+            0xff4d | 0xff7f => {}
+            0xff00 => { /* TODO: joypad */ }
+            0xff01..=0xff02 => {
+                // TODO: serial
             }
-            VRAM_BEGIN..=VRAM_END => self.ppu.write_vram(addr, value),
+            0xa000..=0xbfff => self.mbc.write_ram(address, value),
+            0x8000..=0x9fff => self.ppu.write_vram(addr, value),
+            0xfe00..=0xfe9f => self.ppu.write_vram(addr, value),
+            0xff46 => self.dma_transfer(value),
+            0xff40..=0xff4f => self.ppu.write_vram(addr, value),
+            0xff68..=0xff6b => self.ppu.write_vram(addr, value),
+            0xff04..=0xff07 => self.ppu.write_vram(addr, value),
+            0xff10..=0xff3f => { /* TODO: sound */ }
+            0xff0f => self.ppu.write_vram(addr, value), // TODO: move interrupt flags here
             0xff50 => {
                 self.boot_rom_disabled = value == 1;
             }
+            0xfea0..=0xfeff => { /* Unusable */ }
             0xff80..=0xfffe => self.zram[address & 0x007f] = value,
             0xffff => {
                 self.interrupt_enable = InterruptFlag::from_bits_truncate(value);
                 // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
             }
 
-            0xff4d |
-            0xff7f => {}
-            _ => unreachable!("Write to unmapped address: {:04X}", address)
+            _ => unreachable!("MEM: Write to unmapped address: {:04X}", address)
         }
+    }
+
+    fn read_joypad(&self) -> u8 {
+        // TODO: right now joypad is hard-coded to no buttons pressed
+        0xef
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
@@ -98,15 +115,25 @@ impl MemoryBus {
             return self.boot_rom[address];
         }
 
+
         let val = match address {
             0x0000..=0x7fff => self.mbc.read_rom(address),
             0xa000..=0xbfff => self.mbc.read_ram(address),
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff],
-            VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
-            0xff80..=0xfffe => self.zram[address & 0x007f],
+            0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff],
             0xff4d | 0xff4f | 0xff51..=0xff55 | 0xff6c | 0xff70 | 0xff7f => { 0xff }
+            0xff00 => self.read_joypad(),
+            0x8000..=0x9fff => self.ppu.read_vram(addr),
+            0xfe00..=0xfe9f => self.ppu.read_vram(addr),
+            0xff40..=0xff4f => self.ppu.read_vram(addr),
+            0xff68..=0xff6b => self.ppu.read_vram(addr),
+            0xff04..=0xff07 => self.ppu.read_vram(addr),
+            0xff10..=0xff3f => { /* TODO: sound */ 0xff }
+            0xfea0..=0xfeff => { /* Unusable */ 0xff }
+            0xff80..=0xfffe => self.zram[address & 0x007f],
+            0xff0f => self.ppu.read_vram(addr), // TODO: move interrupt flags here
             0xffff => self.interrupt_enable.bits(),
-            _ => unreachable!("Read from unmapped address: {:04X}", address)
+            _ => unreachable!("MEM: Read from unmapped address: {:04X}", address)
         };
 
         val

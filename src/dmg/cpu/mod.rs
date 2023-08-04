@@ -163,15 +163,7 @@ impl ProcessingUnit {
     }
 
     fn read_byte(&self, addr: u16) -> u8 {
-        match addr {
-            0xff00 => self.read_joypad(),
-            _ => self.bus.borrow().read_byte(addr),
-        }
-    }
-
-    fn read_joypad(&self) -> u8 {
-        // TODO: right now joypad is hard-coded to no buttons pressed
-        0xef
+        self.bus.borrow().read_byte(addr)
     }
 
     pub fn debug_print(&self, pc: u16) {

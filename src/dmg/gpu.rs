@@ -6,8 +6,9 @@ use bitflags::bitflags;
 use crate::dmg::intf::InterruptFlag;
 
 pub const VRAM_BEGIN: usize = 0x8000;
-pub const VRAM_END: usize = 0xFF4B;
+pub const VRAM_END: usize = 0x9fff;
 pub const VRAM_SIZE: usize = VRAM_END - VRAM_BEGIN + 1;
+pub const OAM_SIZE: usize = 0xA0;
 
 bitflags! {
     pub struct Lcdc: u8 {
@@ -115,6 +116,10 @@ pub struct GPU {
     stat: Stat,
     vram: [u8; VRAM_SIZE],
 
+    oam: [u8; OAM_SIZE],
+
+    vram_bank: usize,
+
     scy: u8,
     scx: u8,
     wy: u8,
@@ -155,6 +160,9 @@ impl GPU {
             lcdc: Lcdc::new(),
             stat: Stat::new(),
             vram: [0; VRAM_SIZE],
+            oam: [0; OAM_SIZE],
+
+            vram_bank: 0,
 
             scy: 0x00,
             scx: 0x00,
@@ -291,8 +299,12 @@ impl GPU {
         return should_render;
     }
 
-    pub fn read_vram(&self, address: u16) -> u8 {
+    pub fn read_vram(&self, adr: u16) -> u8 {
+        let address = adr as usize;
+
         match address {
+            VRAM_BEGIN..= VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)],
+            0xfe00 ..= 0xfe9f => self.oam[address - 0xfe00],
             0xff40 => self.lcdc.bits,
             0xff41 => {
                 let bit6 = if self.stat.enable_ly_interrupt {
@@ -332,17 +344,23 @@ impl GPU {
             0xff47 => self.bgp,
             0xff4a => self.wx,
             0xff4b => self.wy,
+            0xff4f => self.vram_bank as u8 | 0xfe,
             0xff04 => self.div,
             0xff05 => self.tima,
             0xff06 => self.tma,
             0xff07 => self.tac,
             0xff0f => self.interrupt_flag.bits(),
-            _ => self.vram[address as usize - VRAM_BEGIN],
+            _ => unreachable!("MEM: Read from unmapped address: {:04X}", address)
+            // _ => { 0xff },
         }
     }
 
-    pub fn write_vram(&mut self, index: u16, value: u8) {
-        match index {
+    pub fn write_vram(&mut self, adr: u16, value: u8) {
+        let address = adr as usize;
+
+        match address {
+            VRAM_BEGIN..= VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)] = value,
+            0xfe00 ..= 0xfe9f => self.oam[address - 0xfe00] = value,
             0xff40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xff41 => {
                 self.stat.enable_ly_interrupt = value & 0x40 != 0x00;
@@ -357,12 +375,13 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
+            0xff4f => self.vram_bank = (value & 0x01) as usize,
             0xff04 => self.div = 0, // Write to ff04 resets it to 0
             0xff05 => self.tima = value,
             0xff06 => self.tma = value,
             0xff07 => self.tac = value,
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
-            _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
+            _ => unreachable!("PPU: Write to unmapped address: {:04X}", address)
         }
     }
 
