@@ -956,9 +956,7 @@ impl ProcessingUnit {
             }
         }
 
-        let cycles = self.lookup_op_code_for_pc(pc).1;
-        self.cycles = self.cycles.wrapping_add(cycles);
-        return cycles;
+        self.lookup_op_code_for_pc(pc).1
     }
 
     fn set_slr_flags(&mut self, c: bool, r: u8) {

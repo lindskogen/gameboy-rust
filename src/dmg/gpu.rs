@@ -123,9 +123,19 @@ pub struct GPU {
     lc: u8,
     bgp: u8,
 
-    timer: u8,
+    /** FF04 - DIV - Divider Register (R/W) */
+    div: u8,
+    /** FF05 - TIMA - Timer counter (R/W) */
+    tima: u8,
+
+    /** FF06 - TMA - Timer Modulo (R/W) */
+    tma: u8,
+
+    /** FF07 - TAC - Timer Control (R/W) */
+    tac: u8,
 
     cycles: u32,
+    timer_clock: u32,
     enable_debug_override: bool,
     pub interrupt_flag: InterruptFlag,
 }
@@ -154,10 +164,15 @@ impl GPU {
             lc: 0x00,
             bgp: 0x00,
 
-            timer: 0x00,
+            div: 0x00,
+
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0x00,
             enable_debug_override: false,
 
             cycles: 0,
+            timer_clock: 0,
             interrupt_flag: InterruptFlag::empty(),
         }
     }
@@ -166,12 +181,48 @@ impl GPU {
         self.enable_debug_override = true;
     }
 
+    fn handle_timer(&mut self, cycles: u32) {
+        let (added, overflow) = self.cycles.overflowing_add(cycles);
+        self.cycles = added;
+
+        if overflow {
+            let divider_reg = self.div;
+            self.div = divider_reg.wrapping_add(1);
+        }
+
+        let timer_enabled = (self.tac >> 2 & 0x01) != 0;
+
+        if timer_enabled {
+            self.timer_clock = self.timer_clock.wrapping_add(cycles * 4);
+
+            let timer_freq = match self.tac & 0b11 {
+                1 => 262144,
+                2 => 65536,
+                3 => 16384,
+                _ => 4096
+            };
+
+            while self.timer_clock >= (4194304 / timer_freq) {
+                let tima = self.tima;
+                let (new_tima, tima_overflow) = tima.overflowing_add(1);
+                self.tima = new_tima;
+                if tima_overflow {
+                    self.interrupt_flag.insert(InterruptFlag::TIMER);
+                    self.tima = self.tma;
+                }
+                self.timer_clock -= 4194304 / timer_freq;
+            }
+        }
+    }
+
     pub fn next(&mut self, elapsed: u32, buffer: &mut Vec<u32>) -> bool {
-        if elapsed == 0 || !self.lcdc.lcd_display_enable() {
+        self.handle_timer(elapsed);
+
+
+        if !self.lcdc.lcd_display_enable() {
             return false;
         }
 
-        self.cycles += elapsed;
 
         let mut should_render = false;
 
@@ -269,7 +320,6 @@ impl GPU {
             }
             0xff42 => self.scy,
             0xff43 => self.scx,
-            0xff07 => self.timer,
             0xff44 => {
                 if self.enable_debug_override {
                     // Hard coded value for gameboy-doctor
@@ -282,6 +332,10 @@ impl GPU {
             0xff47 => self.bgp,
             0xff4a => self.wx,
             0xff4b => self.wy,
+            0xff04 => self.div,
+            0xff05 => self.tima,
+            0xff06 => self.tma,
+            0xff07 => self.tac,
             0xff0f => self.interrupt_flag.bits(),
             _ => self.vram[address as usize - VRAM_BEGIN],
         }
@@ -303,10 +357,10 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
-            0xff07 => {
-                eprintln!("ROM uses timer features");
-                self.timer = value
-            }
+            0xff04 => self.div = 0, // Write to ff04 resets it to 0
+            0xff05 => self.tima = value,
+            0xff06 => self.tma = value,
+            0xff07 => self.tac = value,
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => self.vram[(index as usize) - VRAM_BEGIN] = value,
         }

@@ -38,8 +38,6 @@ pub struct ProcessingUnit {
     halted: bool,
     interrupt_master_enable: bool,
     enable_debugging: bool,
-
-    cycles: u32,
 }
 
 impl ProcessingUnit {
@@ -75,8 +73,6 @@ impl ProcessingUnit {
             bus,
 
             enable_debugging: false,
-
-            cycles: 0,
         }
     }
 
@@ -239,7 +235,7 @@ impl ProcessingUnit {
                 self.interrupt_master_enable = false;
                 let triggered = interrupt_flags.highest_prio_bit();
 
-                println!("-- Handle interrupt {:?}", triggered);
+                eprintln!("-- Handle interrupt {:?}", triggered);
 
                 self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
                 self.halted = false;
