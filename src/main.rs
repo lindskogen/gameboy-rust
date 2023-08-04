@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
 use dmg::dmg::core::Core;
+use dmg::dmg::input::JoypadInput;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -25,8 +26,8 @@ fn main() {
         panic!("{}", e);
     });
 
-    let mut prev_time = Instant::now();
-    let delta = Duration::from_micros(16600);
+    window.limit_update_rate(Some(Duration::from_micros(6600)));
+
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
@@ -39,16 +40,23 @@ fn main() {
     let mut running = true;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let mut keys_pressed = JoypadInput::empty();
+
+        if window.is_key_down(Key::Up) { keys_pressed |= JoypadInput::UP; }
+        if window.is_key_down(Key::Left) { keys_pressed |= JoypadInput::LEFT; }
+        if window.is_key_down(Key::Down) { keys_pressed |= JoypadInput::DOWN; }
+        if window.is_key_down(Key::Right) { keys_pressed |= JoypadInput::RIGHT; }
+        if window.is_key_down(Key::Enter) { keys_pressed |= JoypadInput::START; }
+        if window.is_key_down(Key::RightShift) { keys_pressed |= JoypadInput::SELECT; }
+        if window.is_key_down(Key::Z) { keys_pressed |= JoypadInput::A; }
+        if window.is_key_down(Key::X) { keys_pressed |= JoypadInput::B; }
+
         if running {
-            let should_render = core.step(&mut buffer);
+            let should_render = core.step(&mut buffer, keys_pressed);
 
             if should_render {
-                let current_time = Instant::now();
-                if current_time > (prev_time + delta) {
-                    prev_time = current_time;
-                    // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-                    window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
-                }
+                // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+                window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
             }
         }
 

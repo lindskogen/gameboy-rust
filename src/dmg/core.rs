@@ -5,6 +5,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 use crate::dmg::cpu::ProcessingUnit;
+use crate::dmg::input::JoypadInput;
 use crate::dmg::mem::{MemoryBus, RomBuffer};
 
 pub struct Core {
@@ -51,7 +52,8 @@ impl Core {
         self.bus.borrow_mut().ppu.initialize_gameboy_doctor();
     }
 
-    pub fn step(&mut self, buffer: &mut Vec<u32>) -> bool {
+    pub fn step(&mut self, buffer: &mut Vec<u32>, keys_pressed: JoypadInput) -> bool {
+        self.bus.borrow_mut().input.update(keys_pressed);
         let elapsed = self.cpu.next();
 
         self.bus.borrow_mut().ppu.next(elapsed, buffer)

@@ -5,3 +5,4 @@ mod gpu;
 mod intf;
 mod mem;
 mod mbc;
+pub mod input;

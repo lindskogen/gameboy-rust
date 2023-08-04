@@ -48,6 +48,10 @@ impl Lcdc {
         }
     }
 
+    fn obj_display_enable(&self) -> bool {
+        self.contains(Lcdc::OBJ_DISPLAY_ENABLE)
+    }
+
     fn obj_size(&self) -> u16 {
         if self.contains(Lcdc::OBJ_SIZE) {
             16
@@ -127,6 +131,8 @@ pub struct GPU {
     ly: u8,
     lc: u8,
     bgp: u8,
+    pal0: u8,
+    pal1: u8,
 
     /** FF04 - DIV - Divider Register (R/W) */
     div: u8,
@@ -140,6 +146,7 @@ pub struct GPU {
     tac: u8,
 
     cycles: u32,
+    timer_cycles: u32,
     timer_clock: u32,
     enable_debug_override: bool,
     pub interrupt_flag: InterruptFlag,
@@ -171,6 +178,8 @@ impl GPU {
             ly: 0x00,
             lc: 0x00,
             bgp: 0x00,
+            pal0: 0x00,
+            pal1: 0x00,
 
             div: 0x00,
 
@@ -180,6 +189,7 @@ impl GPU {
             enable_debug_override: false,
 
             cycles: 0,
+            timer_cycles: 0,
             timer_clock: 0,
             interrupt_flag: InterruptFlag::empty(),
         }
@@ -190,12 +200,14 @@ impl GPU {
     }
 
     fn handle_timer(&mut self, cycles: u32) {
-        let (added, overflow) = self.cycles.overflowing_add(cycles);
-        self.cycles = added;
+        self.cycles = self.cycles.wrapping_add(cycles);
 
-        if overflow {
-            let divider_reg = self.div;
-            self.div = divider_reg.wrapping_add(1);
+        self.timer_cycles += cycles;
+
+
+        if self.timer_cycles >= 256 {
+            self.div = self.div.wrapping_add(1);
+            self.timer_cycles -= 256;
         }
 
         let timer_enabled = (self.tac >> 2 & 0x01) != 0;
@@ -303,8 +315,8 @@ impl GPU {
         let address = adr as usize;
 
         match address {
-            VRAM_BEGIN..= VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)],
-            0xfe00 ..= 0xfe9f => self.oam[address - 0xfe00],
+            VRAM_BEGIN..=VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)],
+            0xfe00..=0xfe9f => self.oam[address - 0xfe00],
             0xff40 => self.lcdc.bits,
             0xff41 => {
                 let bit6 = if self.stat.enable_ly_interrupt {
@@ -342,10 +354,12 @@ impl GPU {
             }
             0xff45 => self.lc,
             0xff47 => self.bgp,
+            0xff48 => self.pal0,
+            0xff49 => self.pal1,
             0xff4a => self.wx,
             0xff4b => self.wy,
             0xff4f => self.vram_bank as u8 | 0xfe,
-            0xff04 => self.div,
+            0xff04 => self.div as u8,
             0xff05 => self.tima,
             0xff06 => self.tma,
             0xff07 => self.tac,
@@ -359,8 +373,8 @@ impl GPU {
         let address = adr as usize;
 
         match address {
-            VRAM_BEGIN..= VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)] = value,
-            0xfe00 ..= 0xfe9f => self.oam[address - 0xfe00] = value,
+            VRAM_BEGIN..=VRAM_END => self.vram[(self.vram_bank * 0x2000) | (address & 0x1fff)] = value,
+            0xfe00..=0xfe9f => self.oam[address - 0xfe00] = value,
             0xff40 => self.lcdc = Lcdc::from_bits_truncate(value),
             0xff41 => {
                 self.stat.enable_ly_interrupt = value & 0x40 != 0x00;
@@ -373,6 +387,8 @@ impl GPU {
             0xff44 => self.ly = value,
             0xff45 => self.lc = value,
             0xff47 => self.bgp = value,
+            0xff48 => self.pal0 = value,
+            0xff49 => self.pal1 = value,
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
             0xff4f => self.vram_bank = (value & 0x01) as usize,
@@ -380,6 +396,7 @@ impl GPU {
             0xff05 => self.tima = value,
             0xff06 => self.tma = value,
             0xff07 => self.tac = value,
+
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => unreachable!("PPU: Write to unmapped address: {:04X}", address)
         }
@@ -440,12 +457,106 @@ impl GPU {
     fn render_line_into_buffer(&self, buffer: &mut Vec<u32>) {
         let y = self.ly as u16;
 
+        let (sprites_to_draw, len) = self.populate_sprites_to_render(y);
+
         for x in 0..160u16 {
-            buffer[y as usize * 160 + x as usize] = self.draw_tile_at(
+            let index = y as usize * 160 + x as usize;
+
+            buffer[index] = self.draw_tile_at(
                 ((x + self.scx as u16) % 256) as u8,
                 ((y + self.scy as u16) % 256) as u8,
             );
+
+            if self.lcdc.obj_display_enable() && len > 0 {
+                if let Some(color) = self.draw_sprite_at(&sprites_to_draw[..len], x as u8, y as u8) {
+                    buffer[index] = color;
+                }
+            }
         }
+    }
+
+    fn populate_sprites_to_render(&self, line: u16) -> ([(i32, i32, u16); 10], usize) {
+        let mut sprites = [(0, 0, 0); 10];
+        let mut index = 0usize;
+        let line = line as i32;
+        let sprite_size = self.lcdc.obj_size() as i32;
+
+
+        for i in 0..40u16 {
+            let addr = 0xfe00 + (i * 4);
+            let sprite_y = self.read_vram(addr + 0) as u16 as i32 - 16;
+
+            if line < sprite_y || line >= sprite_y + sprite_size {
+                continue;
+            }
+
+            let sprite_x = self.read_vram(addr + 1) as u16 as i32 - 8;
+            sprites[index] = (sprite_x, sprite_y, i);
+            index += 1;
+            if index >= 10 {
+                break;
+            }
+        }
+
+        if index > 0 {
+            sprites[..index].sort_unstable_by(|a, b| {
+                if a.0 != b.0 {
+                    b.0.cmp(&a.0)
+                } else {
+                    b.2.cmp(&a.2)
+                }
+            })
+        }
+
+
+        (sprites, index)
+    }
+
+    fn draw_sprite_at(&self, sprites: &[(i32, i32, u16)], x: u8, y: u8) -> Option<u32> {
+        let sprite_size = self.lcdc.obj_size();
+        for &(sprite_x, sprite_y, i) in sprites {
+            let tile_x = x as i32 - sprite_x;
+
+            if tile_x < 0 || tile_x > 7 {
+                continue;
+            }
+
+            let addr = 0xfe00 + i * 4;
+            let tile_num = (self.read_vram(addr + 2) as u16) & (if sprite_size == 16 { 0xfe } else { 0xff } as u16);
+            let flags = self.read_vram(addr + 3);
+            let use_pal1 = flags & (1 << 4) != 0;
+            let x_flip = flags & (1 << 5) != 0;
+            let y_flip = flags & (1 << 6) != 0;
+            let below_bg = flags & (1 << 7) != 0;
+
+            if y as i32 - sprite_y > (sprite_size as i32 - 1) { continue; }
+
+
+            let tile_y = if y_flip {
+                (sprite_size - 1) - (y as i32 - sprite_y) as u16
+            } else {
+                (y as i32 - sprite_y) as u16
+            };
+
+            let tile_addr = 0x8000u16 + tile_num * 16 + tile_y * 2;
+
+            let (b1, b2) = (self.read_vram(tile_addr), self.read_vram(tile_addr + 1));
+
+
+            let x_bit = 1 << (if x_flip { tile_x } else { 7 - tile_x } as u32);
+
+            let color = (if b1 & x_bit != 0 { 1 } else { 0 }) | (if b2 & x_bit != 0 { 2 } else { 0 });
+
+            if color == 0 {
+                return None;
+            }
+
+            let palette = if use_pal1 { self.pal1 } else { self.pal0 };
+
+            return Some(TilePixelValue::from_palette_and_u8(palette, color).to_rgb());
+        }
+
+        return None;
     }
 
     pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
@@ -473,3 +584,4 @@ impl GPU {
         }
     }
 }
+

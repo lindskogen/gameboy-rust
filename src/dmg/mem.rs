@@ -11,6 +11,7 @@
 use std::fmt;
 
 use crate::dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
+use crate::dmg::input::{Joypad, JoypadInput};
 use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
 
@@ -27,6 +28,7 @@ pub struct MemoryBus {
     mbc: MBCWrapper,
     wram_bank: usize,
     boot_rom: [u8; 256],
+    pub input: Joypad,
     pub ppu: GPU,
     pub interrupt_enable: InterruptFlag,
 }
@@ -40,6 +42,7 @@ impl Default for MemoryBus {
             mbc: MBCWrapper::default(),
             ppu: GPU::new(),
             boot_rom: [0x00; 256],
+            input: Joypad::default(),
             boot_rom_disabled: false,
             interrupt_enable: InterruptFlag::empty(),
         }
@@ -63,6 +66,7 @@ impl MemoryBus {
             mbc,
             boot_rom,
             boot_rom_disabled: false,
+            input: Joypad::default(),
             ppu: GPU::new(),
             interrupt_enable: InterruptFlag::empty(),
         }
@@ -76,7 +80,7 @@ impl MemoryBus {
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
             0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff] = value,
             0xff4d | 0xff7f => {}
-            0xff00 => { /* TODO: joypad */ }
+            0xff00 => { self.input.write(value) }
             0xff01..=0xff02 => {
                 // TODO: serial
             }
@@ -103,11 +107,6 @@ impl MemoryBus {
         }
     }
 
-    fn read_joypad(&self) -> u8 {
-        // TODO: right now joypad is hard-coded to no buttons pressed
-        0xef
-    }
-
     pub fn read_byte(&self, addr: u16) -> u8 {
         let address = addr as usize;
 
@@ -122,7 +121,11 @@ impl MemoryBus {
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff],
             0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff],
             0xff4d | 0xff4f | 0xff51..=0xff55 | 0xff6c | 0xff70 | 0xff7f => { 0xff }
-            0xff00 => self.read_joypad(),
+            0xff00 => { self.input.read() }
+            0xff01..=0xff02 => {
+                // TODO: serial
+                0xff
+            },
             0x8000..=0x9fff => self.ppu.read_vram(addr),
             0xfe00..=0xfe9f => self.ppu.read_vram(addr),
             0xff40..=0xff4f => self.ppu.read_vram(addr),
