@@ -30,7 +30,7 @@ fn main() {
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
 
-    // core.initialize_gameboy_doctor();
+    core.initialize_gameboy_doctor();
 
     let title = core.read_rom_name();
 

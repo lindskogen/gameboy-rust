@@ -187,15 +187,15 @@ impl ProcessingUnit {
 
             // 19. LDH (n), A
             0xe0 => {
-                let n = self.get_immediate_u8();
-                let addr: u16 = 0xff00 + (n as u16);
+                let n = self.get_immediate_u8() as u16;
+                let addr = 0xff00 + n;
                 self.write_byte(addr, self.a);
             }
 
             // 20. LDH A, (n)
             0xF0 => {
-                let n = self.get_immediate_u8();
-                let addr: u16 = 0xff00 + (n as u16);
+                let n = self.get_immediate_u8() as u16;
+                let addr = 0xff00 + n;
                 self.a = self.read_byte(addr);
             }
 

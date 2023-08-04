@@ -4,3 +4,4 @@ mod debug;
 mod gpu;
 mod intf;
 mod mem;
+mod mbc;
