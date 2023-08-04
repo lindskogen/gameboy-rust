@@ -16,23 +16,16 @@ use crate::dmg::mbc::MBCWrapper;
 
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
-const ROM_BEGIN: usize = 0x0000;
-const ROM_END: usize = 0x7fff;
 
-const ERAM_BEGIN: usize = 0xa000;
-const ERAM_END: usize = 0xbfff;
-
-const ERAM_SIZE: usize = ERAM_END - ERAM_BEGIN + 1;
-
-const MEM_SIZE: usize = 0xffff + 1;
 
 pub type RomBuffer = Vec<u8>;
 
 pub struct MemoryBus {
-    memory: [u8; MEM_SIZE],
-    external_memory: [u8; ERAM_SIZE],
+    wram: [u8; WRAM_SIZE],
+    zram: [u8; ZRAM_SIZE],
     boot_rom_disabled: bool,
     mbc: MBCWrapper,
+    boot_rom: [u8; 256],
     pub ppu: GPU,
     pub interrupt_enable: InterruptFlag,
 }
@@ -40,10 +33,11 @@ pub struct MemoryBus {
 impl Default for MemoryBus {
     fn default() -> Self {
         MemoryBus {
-            memory: [0x00; MEM_SIZE],
-            external_memory: [0x00; ERAM_SIZE],
+            wram: [0x00; WRAM_SIZE],
+            zram: [0x00; ZRAM_SIZE],
             mbc: MBCWrapper::default(),
             ppu: GPU::new(),
+            boot_rom: [0x00; 256],
             boot_rom_disabled: false,
             interrupt_enable: InterruptFlag::empty(),
         }
@@ -52,21 +46,22 @@ impl Default for MemoryBus {
 
 impl MemoryBus {
     pub fn new(bootloader: [u8; 256], rom: Option<RomBuffer>) -> MemoryBus {
-        let mut memory = [0x00; MEM_SIZE];
+        let mut boot_rom = [0x00; 256];
 
-        memory[..256].copy_from_slice(&bootloader);
+        boot_rom[..256].copy_from_slice(&bootloader);
 
 
         let mbc = rom.map(|r| MBCWrapper::new(r)).unwrap_or_default();
 
 
         MemoryBus {
-            memory,
+            wram: [0x00; WRAM_SIZE],
+            zram: [0x00; ZRAM_SIZE],
             mbc,
-            external_memory: [0x00; ERAM_SIZE],
+            boot_rom,
+            boot_rom_disabled: false,
             ppu: GPU::new(),
             interrupt_enable: InterruptFlag::empty(),
-            boot_rom_disabled: false,
         }
     }
 
@@ -75,6 +70,7 @@ impl MemoryBus {
 
         match address {
             0x0000..=0x7fff => self.mbc.write_rom(address, value),
+            0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
             0xa000..=0xbfff => self.mbc.write_ram(address, value),
             0xff46 => {
                 self.dma_transfer(value);
@@ -83,23 +79,34 @@ impl MemoryBus {
             0xff50 => {
                 self.boot_rom_disabled = value == 1;
             }
+            0xff80..=0xfffe => self.zram[address & 0x007f] = value,
             0xffff => {
                 self.interrupt_enable = InterruptFlag::from_bits_truncate(value);
                 // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
             }
-            _ => self.memory[address] = value,
+
+            0xff4d |
+            0xff7f => {}
+            _ => unreachable!("Write to unmapped address: {:04X}", address)
         }
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
         let address = addr as usize;
 
+        if address < 0x100 && !self.boot_rom_disabled {
+            return self.boot_rom[address];
+        }
+
         let val = match address {
             0x0000..=0x7fff => self.mbc.read_rom(address),
             0xa000..=0xbfff => self.mbc.read_ram(address),
+            0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff],
             VRAM_BEGIN..=VRAM_END => self.ppu.read_vram(addr),
+            0xff80..=0xfffe => self.zram[address & 0x007f],
+            0xff4d | 0xff4f | 0xff51..=0xff55 | 0xff6c | 0xff70 | 0xff7f => { 0xff }
             0xffff => self.interrupt_enable.bits(),
-            _ => self.memory[address]
+            _ => unreachable!("Read from unmapped address: {:04X}", address)
         };
 
         val
@@ -115,7 +122,7 @@ impl MemoryBus {
 
 impl fmt::Debug for MemoryBus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Bootloader: {:02x?}", &self.memory[..256])
+        write!(f, "Bootloader: {:02x?}", &self.boot_rom[..256])
     }
 }
 

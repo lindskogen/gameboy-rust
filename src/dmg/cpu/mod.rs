@@ -235,7 +235,7 @@ impl ProcessingUnit {
                 self.interrupt_master_enable = false;
                 let triggered = interrupt_flags.highest_prio_bit();
 
-                eprintln!("-- Handle interrupt {:?}", triggered);
+                // eprintln!("-- Handle interrupt {:?}", triggered);
 
                 self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
                 self.halted = false;
