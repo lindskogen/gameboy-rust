@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::usize;
+use bit_field::BitField;
 
 use bitflags::bitflags;
 
@@ -520,10 +521,10 @@ impl GPU {
             let addr = 0xfe00 + i * 4;
             let tile_num = (self.read_vram(addr + 2) as u16) & (if sprite_size == 16 { 0xfe } else { 0xff } as u16);
             let flags = self.read_vram(addr + 3);
-            let use_pal1 = flags & (1 << 4) != 0;
-            let x_flip = flags & (1 << 5) != 0;
-            let y_flip = flags & (1 << 6) != 0;
-            let below_bg = flags & (1 << 7) != 0;
+            let use_pal1 = flags.get_bit(4);
+            let x_flip = flags.get_bit(5);
+            let y_flip = flags.get_bit(6);
+            let below_bg = flags.get_bit(7);
 
             if y as i32 - sprite_y > (sprite_size as i32 - 1) { continue; }
 
@@ -534,7 +535,7 @@ impl GPU {
                 (y as i32 - sprite_y) as u16
             };
 
-            let tile_addr = 0x8000u16 + tile_num * 16 + tile_y * 2;
+            let tile_addr: u16 = 0x8000 + tile_num * 16 + tile_y * 2;
 
             let (b1, b2) = (self.read_vram(tile_addr), self.read_vram(tile_addr + 1));
 

@@ -10,8 +10,8 @@
 
 use std::fmt;
 
-use crate::dmg::gpu::{GPU, VRAM_BEGIN, VRAM_END};
-use crate::dmg::input::{Joypad, JoypadInput};
+use crate::dmg::gpu::GPU;
+use crate::dmg::input::Joypad;
 use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
 
