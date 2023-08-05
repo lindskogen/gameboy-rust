@@ -499,12 +499,8 @@ impl GPU {
         }
 
         if index > 0 {
-            sprites[..index].sort_unstable_by(|a, b| {
-                if a.0 != b.0 {
-                    b.0.cmp(&a.0)
-                } else {
-                    b.2.cmp(&a.2)
-                }
+            sprites[..index].sort_by(|a, b| {
+                a.0.cmp(&b.0)
             })
         }
 
