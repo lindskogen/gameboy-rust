@@ -26,7 +26,7 @@ fn main() {
         panic!("{}", e);
     });
 
-    window.limit_update_rate(Some(Duration::from_micros(6600)));
+    window.limit_update_rate(Some(Duration::from_micros(16600)));
 
 
     let mut core = Core::load("./dmg_boot.bin", game_rom);
