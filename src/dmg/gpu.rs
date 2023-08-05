@@ -41,6 +41,10 @@ impl Lcdc {
         }
     }
 
+    fn bg_and_window_display_enable(&self) -> bool {
+        self.contains(Lcdc::BG_AND_WINDOW_DISPLAY)
+    }
+
     fn bg_tile_map_display_select(&self) -> u16 {
         if self.contains(Lcdc::BG_TILE_MAP_DISPLAY_SELECT) {
             0x9c00
@@ -62,13 +66,13 @@ impl Lcdc {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
 enum TilePixelValue {
-    Black = 0b00,
+    Black = 0b11,
     LightGray = 0b01,
     DarkGray = 0b10,
-    White = 0b11,
+    White = 0b00,
 }
 
 impl TilePixelValue {
@@ -403,7 +407,7 @@ impl GPU {
         }
     }
 
-    fn get_pixel_color(&self, tile_location: u16, tile_y: u8, tile_x: u8) -> u32 {
+    fn get_pixel_color(&self, tile_location: u16, tile_y: u8, tile_x: u8) -> TilePixelValue {
         let tile_y_data: [u8; 2] = {
             let a = self.read_vram(tile_location + (tile_y as u16 * 2));
             let b = self.read_vram(tile_location + (tile_y as u16 * 2) + 1);
@@ -423,7 +427,7 @@ impl GPU {
         };
         let color = (color_h | color_l) as u8;
 
-        TilePixelValue::from_palette_and_u8(self.bgp, color).to_rgb()
+        TilePixelValue::from_palette_and_u8(self.bgp, color)
     }
 
     fn get_tile_location(&self, x: u8, y: u8) -> u16 {
@@ -446,7 +450,7 @@ impl GPU {
         tile_base + tile_offset
     }
 
-    fn draw_tile_at(&self, x: u8, y: u8) -> u32 {
+    fn draw_tile_at(&self, x: u8, y: u8) -> TilePixelValue {
         let tile_location = self.get_tile_location(x, y);
 
         let tile_y = y % 8;
@@ -463,16 +467,23 @@ impl GPU {
         for x in 0..160u16 {
             let index = y as usize * 160 + x as usize;
 
-            buffer[index] = self.draw_tile_at(
-                ((x + self.scx as u16) % 256) as u8,
-                ((y + self.scy as u16) % 256) as u8,
-            );
+            let mut tile_pixel_color = TilePixelValue::White;
+
+            if self.lcdc.bg_and_window_display_enable() {
+                tile_pixel_color = self.draw_tile_at(
+                    ((x + self.scx as u16) % 256) as u8,
+                    ((y + self.scy as u16) % 256) as u8,
+                );
+            }
+
 
             if self.lcdc.obj_display_enable() && len > 0 {
-                if let Some(color) = self.draw_sprite_at(&sprites_to_draw[..len], x as u8, y as u8) {
-                    buffer[index] = color;
+                if let Some(color) = self.draw_sprite_at(&sprites_to_draw[..len], x as u8, y as u8, tile_pixel_color == TilePixelValue::White) {
+                    tile_pixel_color = color;
                 }
             }
+
+            buffer[index] = tile_pixel_color.to_rgb();
         }
     }
 
@@ -509,7 +520,7 @@ impl GPU {
         (sprites, index)
     }
 
-    fn draw_sprite_at(&self, sprites: &[(i32, i32, u16)], x: u8, y: u8) -> Option<u32> {
+    fn draw_sprite_at(&self, sprites: &[(i32, i32, u16)], x: u8, y: u8, bg_color_is_white: bool) -> Option<TilePixelValue> {
         let sprite_size = self.lcdc.obj_size();
         for &(sprite_x, sprite_y, i) in sprites {
             let tile_x = x as i32 - sprite_x;
@@ -524,7 +535,7 @@ impl GPU {
             let use_pal1 = flags.get_bit(4);
             let x_flip = flags.get_bit(5);
             let y_flip = flags.get_bit(6);
-            let below_bg = flags.get_bit(7);
+            let behind_non_white_bg = flags.get_bit(7);
 
             if y as i32 - sprite_y > (sprite_size as i32 - 1) { continue; }
 
@@ -548,9 +559,13 @@ impl GPU {
                 return None;
             }
 
+            if !bg_color_is_white && behind_non_white_bg {
+                return None
+            }
+
             let palette = if use_pal1 { self.pal1 } else { self.pal0 };
 
-            return Some(TilePixelValue::from_palette_and_u8(palette, color).to_rgb());
+            return Some(TilePixelValue::from_palette_and_u8(palette, color));
         }
 
         return None;
@@ -561,7 +576,7 @@ impl GPU {
             for y in 0..8 {
                 for x in 0..8 {
                     buffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160] =
-                        self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8)
+                        self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8).to_rgb()
                 }
             }
         }
