@@ -316,6 +316,27 @@ impl GPU {
         return should_render;
     }
 
+    /// LY should be set to 0 when the LCD is off.
+    fn read_ly(&self) -> u8 {
+        if self.enable_debug_override {
+            // Hard coded value for gameboy-doctor
+            0x90
+        } else if !self.lcdc.lcd_display_enable() {
+            0
+        } else {
+            self.ly
+        }
+    }
+
+    /// While the LCD is disabled, the mode flag (bits 1-0 of STAT) is set to 0, indicating that it is safe to write to all parts of RAM.
+    fn read_stat_mode(&self) -> StatMode {
+        if !self.lcdc.lcd_display_enable() {
+            StatMode::HBlank0
+        } else {
+            self.stat.mode
+        }
+    }
+
     pub fn read_vram(&self, adr: u16) -> u8 {
         let address = adr as usize;
 
@@ -345,18 +366,13 @@ impl GPU {
                     0x00
                 };
                 let bit2 = if self.ly == self.lc { 0x04 } else { 0x00 };
-                bit6 | bit5 | bit4 | bit3 | bit2 | (self.stat.mode as u8)
+                let mode = self.read_stat_mode() as u8;
+
+                bit6 | bit5 | bit4 | bit3 | bit2 | mode
             }
             0xff42 => self.scy,
             0xff43 => self.scx,
-            0xff44 => {
-                if self.enable_debug_override {
-                    // Hard coded value for gameboy-doctor
-                    0x90
-                } else {
-                    self.ly
-                }
-            }
+            0xff44 => self.read_ly(),
             0xff45 => self.lc,
             0xff47 => self.bgp,
             0xff48 => self.pal0,
