@@ -86,7 +86,7 @@ pub struct MBCWrapper {
 impl Default for MBCWrapper {
     fn default() -> Self {
         Self {
-            variant: MBCType::Mbc0(MBC0 { rom: Vec::default() })
+            variant: MBCType::Mbc0(MBC0 { rom: iter::repeat(0x00).take(8000).collect() })
         }
     }
 }

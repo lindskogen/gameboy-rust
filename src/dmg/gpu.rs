@@ -576,7 +576,7 @@ impl GPU {
             }
 
             if !bg_color_is_white && behind_non_white_bg {
-                return None
+                return None;
             }
 
             let palette = if use_pal1 { self.pal1 } else { self.pal0 };
