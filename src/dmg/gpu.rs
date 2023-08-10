@@ -571,11 +571,11 @@ impl GPU {
             let color = (if b1 & x_bit != 0 { 1 } else { 0 }) | (if b2 & x_bit != 0 { 2 } else { 0 });
 
             if color == 0 {
-                return None;
+                continue
             }
 
             if !bg_color_is_white && behind_non_white_bg {
-                return None;
+                continue;
             }
 
             let palette = if use_pal1 { self.pal1 } else { self.pal0 };
