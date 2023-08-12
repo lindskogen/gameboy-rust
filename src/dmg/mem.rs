@@ -14,6 +14,7 @@ use crate::dmg::gpu::GPU;
 use crate::dmg::input::Joypad;
 use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
+use crate::dmg::serial::Serial;
 
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
@@ -26,6 +27,7 @@ pub struct MemoryBus {
     zram: [u8; ZRAM_SIZE],
     boot_rom_disabled: bool,
     mbc: MBCWrapper,
+    serial: Serial,
     wram_bank: usize,
     boot_rom: [u8; 256],
     pub input: Joypad,
@@ -39,6 +41,7 @@ impl Default for MemoryBus {
             wram: [0x00; WRAM_SIZE],
             zram: [0x00; ZRAM_SIZE],
             wram_bank: 1,
+            serial: Serial::default(),
             mbc: MBCWrapper::default(),
             ppu: GPU::new(),
             boot_rom: [0x00; 256],
@@ -64,6 +67,7 @@ impl MemoryBus {
             zram: [0x00; ZRAM_SIZE],
             wram_bank: 1,
             mbc,
+            serial: Serial::default(),
             boot_rom,
             boot_rom_disabled: false,
             input: Joypad::default(),
@@ -80,10 +84,8 @@ impl MemoryBus {
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
             0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff] = value,
             0xff4d | 0xff7f => {}
-            0xff00 => { self.input.write(value) }
-            0xff01..=0xff02 => {
-                // TODO: serial
-            }
+            0xff00 => self.input.write(value),
+            0xff01..=0xff02 => self.serial.write(addr, value),
             0xa000..=0xbfff => self.mbc.write_ram(address, value),
             0x8000..=0x9fff => self.ppu.write_vram(addr, value),
             0xfe00..=0xfe9f => self.ppu.write_vram(addr, value),
@@ -122,10 +124,7 @@ impl MemoryBus {
             0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff],
             0xff4d | 0xff4f | 0xff51..=0xff55 | 0xff6c | 0xff70 | 0xff7f => { 0xff }
             0xff00 => { self.input.read() }
-            0xff01..=0xff02 => {
-                // TODO: serial
-                0xff
-            },
+            0xff01..=0xff02 => self.serial.read(addr),
             0x8000..=0x9fff => self.ppu.read_vram(addr),
             0xfe00..=0xfe9f => self.ppu.read_vram(addr),
             0xff40..=0xff4f => self.ppu.read_vram(addr),
