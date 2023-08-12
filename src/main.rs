@@ -37,7 +37,6 @@ fn main() {
 
     window.set_title(&title);
 
-    let mut running = true;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let mut keys_pressed = JoypadInput::empty();
@@ -51,27 +50,15 @@ fn main() {
         if window.is_key_down(Key::Z) { keys_pressed |= JoypadInput::A; }
         if window.is_key_down(Key::X) { keys_pressed |= JoypadInput::B; }
 
-        if running {
-            let should_render = core.step(&mut buffer, keys_pressed);
+        let should_render = core.step(&mut buffer, keys_pressed);
 
-            if should_render {
-                // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-                window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
-            }
+        if should_render {
+            // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+            window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
         }
 
         if window.is_key_down(Key::LeftSuper) && window.is_key_pressed(Key::S, KeyRepeat::Yes) {
             write_buffer_to_file(&buffer);
-        }
-
-        if running && window.is_key_down(Key::P) {
-            running = false;
-            println!("Stopped");
-        }
-
-        if !running && window.is_key_down(Key::S) {
-            running = true;
-            println!("Started");
         }
     }
 }
