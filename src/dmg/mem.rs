@@ -147,6 +147,11 @@ impl MemoryBus {
             self.write_byte(0xfe00 + i, self.read_byte(address_block + i));
         }
     }
+
+    pub fn check_interrupt(&self) -> bool {
+        self.interrupt_enable
+            .intersects(self.ppu.interrupt_flag)
+    }
 }
 
 impl fmt::Debug for MemoryBus {

@@ -213,26 +213,29 @@ impl ProcessingUnit {
         self.write_byte(self.get_hl(), n);
     }
 
-    fn check_and_execute_interrupts(&mut self) {
-        if self.interrupt_master_enable
-            && self
-            .bus
-            .borrow()
-            .interrupt_enable
-            .intersects(self.bus.borrow().ppu.interrupt_flag)
-        {
-            let interrupt_flags = self.bus.borrow().ppu.interrupt_flag;
-            if let Some(addr) = interrupt_flags.interrupt_starting_address() {
-                self.interrupt_master_enable = false;
-                let triggered = interrupt_flags.highest_prio_bit();
+    fn check_and_execute_interrupts(&mut self) -> bool {
+        let interrupt_triggered = self.bus.borrow().check_interrupt();
 
-                // eprintln!("-- Handle interrupt {:?}", triggered);
+        if interrupt_triggered {
+            self.halted = false;
 
-                self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
-                self.halted = false;
-                self.call(addr);
+            if self.interrupt_master_enable {
+                let interrupt_flags = self.bus.borrow().ppu.interrupt_flag;
+                if let Some(addr) = interrupt_flags.interrupt_starting_address() {
+                    self.interrupt_master_enable = false;
+                    let triggered = interrupt_flags.highest_prio_bit();
+
+                    self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
+
+                    self.call(addr);
+
+                    return true;
+                }
             }
         }
+
+
+        false
     }
 
     fn add_16_imm(&mut self, a: u16) -> u16 {

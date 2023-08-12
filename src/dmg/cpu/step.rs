@@ -7,7 +7,13 @@ use super::ProcessingUnit;
 
 impl ProcessingUnit {
     pub fn next(&mut self) -> u32 {
-        self.check_and_execute_interrupts();
+        if self.check_and_execute_interrupts() {
+            return 4;
+        }
+
+        if self.halted {
+            return 4;
+        }
 
         let pc = self.pc;
 
