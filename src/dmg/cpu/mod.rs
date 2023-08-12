@@ -230,8 +230,7 @@ impl ProcessingUnit {
 
                 self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
                 self.halted = false;
-                self.push_u16(self.pc);
-                self.pc = addr;
+                self.call(addr);
             }
         }
     }
