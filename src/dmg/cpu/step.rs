@@ -1,13 +1,14 @@
 use bit_field::BitField;
 
 use crate::dmg::debug::lookup_op_code;
+use crate::dmg::mem::MemoryBus;
 
 use super::Flags;
 use super::ProcessingUnit;
 
 impl ProcessingUnit {
-    pub fn next(&mut self) -> u32 {
-        if self.check_and_execute_interrupts() {
+    pub fn next(&mut self, bus: &mut MemoryBus) -> u32 {
+        if self.check_and_execute_interrupts(bus) {
             return 4;
         }
 
@@ -17,35 +18,35 @@ impl ProcessingUnit {
 
         let pc = self.pc;
 
-        self.debug_print(pc);
+        self.debug_print(pc, bus);
 
         self.pc += 1;
 
-        match self.read_byte(pc) {
+        match self.read_byte(bus, pc) {
             // 3.3.1 8-bit loads
             // 1. LD nn,n
             0x06 => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_b(n);
             }
             0x0E => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_c(n);
             }
             0x16 => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_d(n);
             }
             0x1E => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_e(n);
             }
             0x26 => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_h(n);
             }
             0x2E => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.ld_l(n);
             }
 
@@ -58,15 +59,15 @@ impl ProcessingUnit {
             0x7C => self.ld_a(self.h),
             0x7D => self.ld_a(self.l),
 
-            0x0A => self.ld_a(self.read_byte(self.get_bc())),
-            0x1A => self.ld_a(self.read_byte(self.get_de())),
-            0x7E => self.ld_a(self.read_byte(self.get_hl())),
+            0x0A => self.ld_a(self.read_byte(bus, self.get_bc())),
+            0x1A => self.ld_a(self.read_byte(bus, self.get_de())),
+            0x7E => self.ld_a(self.read_byte(bus, self.get_hl())),
             0xFA => {
-                let v = self.get_immediate_u16();
-                self.ld_a(self.read_byte(v));
+                let v = self.get_immediate_u16(bus);
+                self.ld_a(self.read_byte(bus, v));
             }
             0x3E => {
-                let v = self.get_immediate_u8();
+                let v = self.get_immediate_u8(bus);
                 self.ld_a(v);
             }
 
@@ -76,7 +77,7 @@ impl ProcessingUnit {
             0x43 => self.ld_b(self.e),
             0x44 => self.ld_b(self.h),
             0x45 => self.ld_b(self.l),
-            0x46 => self.ld_b(self.read_byte(self.get_hl())),
+            0x46 => self.ld_b(self.read_byte(bus, self.get_hl())),
 
             0x48 => self.ld_c(self.b),
             0x49 => self.ld_c(self.c),
@@ -84,7 +85,7 @@ impl ProcessingUnit {
             0x4B => self.ld_c(self.e),
             0x4C => self.ld_c(self.h),
             0x4D => self.ld_c(self.l),
-            0x4E => self.ld_c(self.read_byte(self.get_hl())),
+            0x4E => self.ld_c(self.read_byte(bus, self.get_hl())),
 
             0x50 => self.ld_d(self.b),
             0x51 => self.ld_d(self.c),
@@ -92,7 +93,7 @@ impl ProcessingUnit {
             0x53 => self.ld_d(self.e),
             0x54 => self.ld_d(self.h),
             0x55 => self.ld_d(self.l),
-            0x56 => self.ld_d(self.read_byte(self.get_hl())),
+            0x56 => self.ld_d(self.read_byte(bus, self.get_hl())),
 
             0x58 => self.ld_e(self.b),
             0x59 => self.ld_e(self.c),
@@ -100,7 +101,7 @@ impl ProcessingUnit {
             0x5B => self.ld_e(self.e),
             0x5C => self.ld_e(self.h),
             0x5D => self.ld_e(self.l),
-            0x5E => self.ld_e(self.read_byte(self.get_hl())),
+            0x5E => self.ld_e(self.read_byte(bus, self.get_hl())),
 
             0x60 => self.ld_h(self.b),
             0x61 => self.ld_h(self.c),
@@ -108,7 +109,7 @@ impl ProcessingUnit {
             0x63 => self.ld_h(self.e),
             0x64 => self.ld_h(self.h),
             0x65 => self.ld_h(self.l),
-            0x66 => self.ld_h(self.read_byte(self.get_hl())),
+            0x66 => self.ld_h(self.read_byte(bus, self.get_hl())),
 
             0x68 => self.ld_l(self.b),
             0x69 => self.ld_l(self.c),
@@ -116,17 +117,17 @@ impl ProcessingUnit {
             0x6B => self.ld_l(self.e),
             0x6C => self.ld_l(self.h),
             0x6D => self.ld_l(self.l),
-            0x6E => self.ld_l(self.read_byte(self.get_hl())),
+            0x6E => self.ld_l(self.read_byte(bus, self.get_hl())),
 
-            0x70 => self.ld_hl(self.b),
-            0x71 => self.ld_hl(self.c),
-            0x72 => self.ld_hl(self.d),
-            0x73 => self.ld_hl(self.e),
-            0x74 => self.ld_hl(self.h),
-            0x75 => self.ld_hl(self.l),
+            0x70 => self.ld_hl(self.b, bus),
+            0x71 => self.ld_hl(self.c, bus),
+            0x72 => self.ld_hl(self.d, bus),
+            0x73 => self.ld_hl(self.e, bus),
+            0x74 => self.ld_hl(self.h, bus),
+            0x75 => self.ld_hl(self.l, bus),
             0x36 => {
-                let n = self.get_immediate_u8();
-                self.ld_hl(n);
+                let n = self.get_immediate_u8(bus);
+                self.ld_hl(n, bus);
             }
 
             // 4. LD n, A
@@ -137,25 +138,25 @@ impl ProcessingUnit {
             0x5F => self.ld_e(self.a),
             0x67 => self.ld_h(self.a),
             0x6F => self.ld_l(self.a),
-            0x02 => self.write_byte(self.get_bc(), self.a),
-            0x12 => self.write_byte(self.get_de(), self.a),
-            0x77 => self.write_byte(self.get_hl(), self.a),
+            0x02 => self.write_byte(bus, self.get_bc(), self.a),
+            0x12 => self.write_byte(bus, self.get_de(), self.a),
+            0x77 => self.write_byte(bus, self.get_hl(), self.a),
             0xEA => {
-                let addr = self.get_immediate_u16();
-                self.write_byte(addr, self.a)
+                let addr = self.get_immediate_u16(bus);
+                self.write_byte(bus, addr, self.a)
             }
 
             // 5. LD A, (C)
             0xF2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
 
-                self.a = self.read_byte(addr);
+                self.a = self.read_byte(bus, addr);
             }
 
             // 6. LD (C), A
             0xE2 => {
                 let addr: u16 = 0xff00 + (self.c as u16);
-                self.write_byte(addr, self.a);
+                self.write_byte(bus, addr, self.a);
             }
 
             // 7, 8, 9:
@@ -164,7 +165,7 @@ impl ProcessingUnit {
             // LDD A, (HL)
             0x3a => {
                 let hl = self.hld();
-                self.a = self.read_byte(hl);
+                self.a = self.read_byte(bus, hl);
             }
 
             // 10, 11, 12:
@@ -174,7 +175,7 @@ impl ProcessingUnit {
             0x32 => {
                 let hl = self.hld();
 
-                self.write_byte(hl, self.a);
+                self.write_byte(bus, hl, self.a);
             }
 
             // 13, 14, 15:
@@ -182,45 +183,45 @@ impl ProcessingUnit {
             // LD A, (HL+)
             // LDI A, (HL)
             0x2a => {
-                self.lda_hli();
+                self.lda_hli(bus);
             }
 
             // 16, 17, 18:
             // LD (HLI), A
             // LD (HL+), A
             // LDI (HL), A
-            0x22 => self.ldi_hla(),
+            0x22 => self.ldi_hla(bus),
 
             // 19. LDH (n), A
             0xe0 => {
-                let n = self.get_immediate_u8() as u16;
+                let n = self.get_immediate_u8(bus) as u16;
                 let addr = 0xff00 + n;
-                self.write_byte(addr, self.a);
+                self.write_byte(bus, addr, self.a);
             }
 
             // 20. LDH A, (n)
             0xF0 => {
-                let n = self.get_immediate_u8() as u16;
+                let n = self.get_immediate_u8(bus) as u16;
                 let addr = 0xff00 + n;
-                self.a = self.read_byte(addr);
+                self.a = self.read_byte(bus, addr);
             }
 
             // 3.3.2 16-bit loads
             // 1. LD n, nn
             0x01 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 self.set_bc(nn);
             }
             0x11 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 self.set_de(nn);
             }
             0x21 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 self.set_hl(nn)
             }
             0x31 => {
-                self.sp = self.get_immediate_u16();
+                self.sp = self.get_immediate_u16(bus);
             }
 
             // 2. LD SP, HL
@@ -229,25 +230,25 @@ impl ProcessingUnit {
             // 3. LD HL, SP+n
             // 4. LDHL SP, n
             0xF8 => {
-                let r = self.add_16_imm(self.sp);
+                let r = self.add_16_imm(self.sp, bus);
                 self.set_hl(r);
             }
 
             // 5. LD (nn),SP
             0x08 => {
-                let lsb_addr = self.get_immediate_u16();
+                let lsb_addr = self.get_immediate_u16(bus);
                 let msb_addr = lsb_addr.wrapping_add(1);
                 let (sp_msb, sp_lsb) = Self::get_bits(self.sp);
 
-                self.write_byte(lsb_addr, sp_lsb);
-                self.write_byte(msb_addr, sp_msb);
+                self.write_byte(bus, lsb_addr, sp_lsb);
+                self.write_byte(bus, msb_addr, sp_msb);
             }
 
             // 6. PUSH nn
-            0xC5 => self.push_u16(self.get_bc()),
-            0xD5 => self.push_u16(self.get_de()),
-            0xE5 => self.push_u16(self.get_hl()),
-            0xF5 => self.push_u16(self.get_af()),
+            0xC5 => self.push_u16(self.get_bc(), bus),
+            0xD5 => self.push_u16(self.get_de(), bus),
+            0xE5 => self.push_u16(self.get_hl(), bus),
+            0xF5 => self.push_u16(self.get_af(), bus),
 
             // 3.3.3 8-bit ALU
 
@@ -259,9 +260,9 @@ impl ProcessingUnit {
             0x83 => self.add_a(self.e),
             0x84 => self.add_a(self.h),
             0x85 => self.add_a(self.l),
-            0x86 => self.add_a(self.read_byte(self.get_hl())),
+            0x86 => self.add_a(self.read_byte(bus, self.get_hl())),
             0xc6 => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.add_a(n)
             }
 
@@ -273,9 +274,9 @@ impl ProcessingUnit {
             0x8B => self.adc(self.e),
             0x8C => self.adc(self.h),
             0x8D => self.adc(self.l),
-            0x8E => self.adc(self.read_byte(self.get_hl())),
+            0x8E => self.adc(self.read_byte(bus, self.get_hl())),
             0xCE => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.adc(n)
             }
 
@@ -287,9 +288,9 @@ impl ProcessingUnit {
             0x93 => self.sub_a(self.e),
             0x94 => self.sub_a(self.h),
             0x95 => self.sub_a(self.l),
-            0x96 => self.sub_a(self.read_byte(self.get_hl())),
+            0x96 => self.sub_a(self.read_byte(bus, self.get_hl())),
             0xD6 => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.sub_a(n)
             }
 
@@ -301,9 +302,9 @@ impl ProcessingUnit {
             0x9b => self.sbc(self.e),
             0x9c => self.sbc(self.h),
             0x9d => self.sbc(self.l),
-            0x9e => self.sbc(self.read_byte(self.get_hl())),
+            0x9e => self.sbc(self.read_byte(bus, self.get_hl())),
             0xDE => {
-                let n = self.get_immediate_u8();
+                let n = self.get_immediate_u8(bus);
                 self.sbc(n);
             }
 
@@ -315,9 +316,9 @@ impl ProcessingUnit {
             0xa3 => self.and(self.e),
             0xa4 => self.and(self.h),
             0xa5 => self.and(self.l),
-            0xa6 => self.and(self.read_byte(self.get_hl())),
+            0xa6 => self.and(self.read_byte(bus, self.get_hl())),
             0xe6 => {
-                let param = self.get_immediate_u8();
+                let param = self.get_immediate_u8(bus);
                 self.and(param)
             }
 
@@ -329,9 +330,9 @@ impl ProcessingUnit {
             0xb3 => self.or(self.e),
             0xb4 => self.or(self.h),
             0xb5 => self.or(self.l),
-            0xb6 => self.or(self.read_byte(self.get_hl())),
+            0xb6 => self.or(self.read_byte(bus, self.get_hl())),
             0xf6 => {
-                let param = self.get_immediate_u8();
+                let param = self.get_immediate_u8(bus);
                 self.or(param)
             }
 
@@ -343,9 +344,9 @@ impl ProcessingUnit {
             0xAB => self.xor_a(self.e),
             0xAC => self.xor_a(self.h),
             0xAD => self.xor_a(self.l),
-            0xAE => self.xor_a(self.read_byte(self.get_hl())),
+            0xAE => self.xor_a(self.read_byte(bus, self.get_hl())),
             0xEE => {
-                let param = self.get_immediate_u8();
+                let param = self.get_immediate_u8(bus);
                 self.xor_a(param)
             }
 
@@ -357,9 +358,9 @@ impl ProcessingUnit {
             0xBB => self.compare_a_with(self.e),
             0xBC => self.compare_a_with(self.h),
             0xBD => self.compare_a_with(self.l),
-            0xBE => self.compare_a_with(self.read_byte(self.get_hl())),
+            0xBE => self.compare_a_with(self.read_byte(bus, self.get_hl())),
             0xFE => {
-                let param = self.get_immediate_u8();
+                let param = self.get_immediate_u8(bus);
                 self.compare_a_with(param)
             }
 
@@ -408,11 +409,11 @@ impl ProcessingUnit {
             }
             0x34 => {
                 let hl = self.get_hl();
-                let n = self.read_byte(hl);
+                let n = self.read_byte(bus, hl);
                 let nn = n.wrapping_add(1);
 
                 self.reset_and_set_carry_zero(n, nn);
-                self.write_byte(hl, nn);
+                self.write_byte(bus, hl, nn);
             }
 
             // 10. DEC n
@@ -453,9 +454,9 @@ impl ProcessingUnit {
             }
             0x35 => {
                 let hl = self.get_hl();
-                let prev = self.read_byte(hl);
+                let prev = self.read_byte(bus, hl);
                 let r = prev.wrapping_sub(1);
-                self.write_byte(hl, r);
+                self.write_byte(bus, hl, r);
                 self.dec_flags(prev, r);
             }
 
@@ -469,7 +470,7 @@ impl ProcessingUnit {
 
             // 2. ADD SP,n
 
-            0xE8 => self.sp = self.add_16_imm(self.sp),
+            0xE8 => self.sp = self.add_16_imm(self.sp, bus),
 
             // 3. INC nn
             0x03 => self.set_bc(self.get_bc().wrapping_add(1)),
@@ -518,7 +519,8 @@ impl ProcessingUnit {
 
             // 7. HALT
             0x76 => {
-                assert!(self.interrupt_master_enable);
+                // assert!(self.interrupt_master_enable, "WARN: HALT while IME==false??");
+
                 self.halted = true;
             }
 
@@ -566,7 +568,7 @@ impl ProcessingUnit {
             0xCB => {
                 let npc = pc + 1;
                 self.pc += 1;
-                match self.read_byte(npc) {
+                match self.read_byte(bus, npc) {
                     // 3.3.5. Miscellaneous
 
                     // 1. SWAP n
@@ -579,8 +581,8 @@ impl ProcessingUnit {
                     0x35 => self.l = self.swap(self.l),
                     0x36 => {
                         let hl = self.get_hl();
-                        let r = self.swap(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.swap(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 3.3.7. Bit Opcodes
@@ -598,7 +600,7 @@ impl ProcessingUnit {
                             0b011 => Self::bit(b, self.e, &mut self.f),
                             0b100 => Self::bit(b, self.h, &mut self.f),
                             0b101 => Self::bit(b, self.l, &mut self.f),
-                            0b110 => Self::bit(b, self.read_byte(self.get_hl()), &mut self.f),
+                            0b110 => Self::bit(b, self.read_byte(bus, self.get_hl()), &mut self.f),
                             _ => unreachable!(),
                         };
                     }
@@ -618,9 +620,9 @@ impl ProcessingUnit {
                             0b101 => { self.l.set_bit(b, true); }
                             0b110 => {
                                 let hl = self.get_hl();
-                                let mut v = self.read_byte(hl);
+                                let mut v = self.read_byte(bus, hl);
                                 v.set_bit(b, true);
-                                self.write_byte(hl, v);
+                                self.write_byte(bus, hl, v);
                             }
                             _ => unreachable!(),
                         };
@@ -641,9 +643,9 @@ impl ProcessingUnit {
                             0b101 => { self.l.set_bit(b, false); }
                             0b110 => {
                                 let hl = self.get_hl();
-                                let mut v = self.read_byte(hl);
+                                let mut v = self.read_byte(bus, hl);
                                 v.set_bit(b, false);
-                                self.write_byte(hl, v);
+                                self.write_byte(bus, hl, v);
                             }
                             _ => unreachable!(),
                         };
@@ -662,8 +664,8 @@ impl ProcessingUnit {
                     0x05 => self.l = self.rlc_8(self.l),
                     0x06 => {
                         let hl = self.get_hl();
-                        let r = self.rlc_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.rlc_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 6. RL n
@@ -676,8 +678,8 @@ impl ProcessingUnit {
                     0x15 => self.l = self.rl_8(self.l),
                     0x16 => {
                         let hl = self.get_hl();
-                        let r = self.rl_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.rl_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 7. RLC n
@@ -691,8 +693,8 @@ impl ProcessingUnit {
                     0x0d => self.l = self.rrc_8(self.l),
                     0x0e => {
                         let hl = self.get_hl();
-                        let r = self.rrc_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.rrc_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 8. RR n
@@ -705,8 +707,8 @@ impl ProcessingUnit {
                     0x1D => self.l = self.rr_8(self.l),
                     0x1E => {
                         let hl = self.get_hl();
-                        let r = self.rr_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.rr_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 9. SLA n
@@ -719,8 +721,8 @@ impl ProcessingUnit {
                     0x25 => self.l = self.sla_8(self.l),
                     0x26 => {
                         let hl = self.get_hl();
-                        let r = self.sla_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.sla_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 10. SRA n
@@ -734,8 +736,8 @@ impl ProcessingUnit {
                     0x2D => self.l = self.sra_8(self.l),
                     0x2E => {
                         let hl = self.get_hl();
-                        let r = self.sra_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.sra_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
 
                     // 11. SRL n
@@ -748,8 +750,8 @@ impl ProcessingUnit {
                     0x3D => self.l = self.srl_8(self.l),
                     0x3E => {
                         let hl = self.get_hl();
-                        let r = self.srl_8(self.read_byte(hl));
-                        self.write_byte(hl, r);
+                        let r = self.srl_8(self.read_byte(bus, hl));
+                        self.write_byte(bus, hl, r);
                     }
                 }
             }
@@ -757,32 +759,32 @@ impl ProcessingUnit {
             // 3.3.8 Jumps
 
             // 1. JP nn
-            0xC3 => self.pc = self.get_immediate_u16(),
+            0xC3 => self.pc = self.get_immediate_u16(bus),
 
             // 2. JP cc,nn
             0xC2 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if !self.f.contains(Flags::ZERO) {
                     self.pc = nn
                 }
             }
 
             0xCA => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if self.f.contains(Flags::ZERO) {
                     self.pc = nn
                 }
             }
 
             0xD2 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if !self.f.contains(Flags::CARRY) {
                     self.pc = nn
                 }
             }
 
             0xDA => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if self.f.contains(Flags::CARRY) {
                     self.pc = nn
                 }
@@ -795,7 +797,7 @@ impl ProcessingUnit {
 
             // 4. JR n
             0x18 => {
-                let n = self.get_immediate_i8();
+                let n = self.get_immediate_i8(bus);
                 self.pc = ((self.pc as i16) + n as i16) as u16;
             }
 
@@ -803,28 +805,28 @@ impl ProcessingUnit {
 
             // JR NZ,*
             0x20 => {
-                let n = self.get_immediate_i8();
+                let n = self.get_immediate_i8(bus);
                 if !self.f.contains(Flags::ZERO) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             }
             // JR Z,*
             0x28 => {
-                let n = self.get_immediate_i8();
+                let n = self.get_immediate_i8(bus);
                 if self.f.contains(Flags::ZERO) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             }
             // JR NC,*
             0x30 => {
-                let n = self.get_immediate_i8();
+                let n = self.get_immediate_i8(bus);
                 if !self.f.contains(Flags::CARRY) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
             }
             // JR C,*
             0x38 => {
-                let n = self.get_immediate_i8();
+                let n = self.get_immediate_i8(bus);
                 if self.f.contains(Flags::CARRY) {
                     self.pc = ((self.pc as i16) + n as i16) as u16;
                 }
@@ -834,124 +836,121 @@ impl ProcessingUnit {
 
             // 1. CALL nn
             0xCD => {
-                let nn = self.get_immediate_u16();
-                self.call(nn)
+                let nn = self.get_immediate_u16(bus);
+                self.call(nn, bus)
             }
 
             // 2. CALL cc,nn
             0xC4 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if !self.f.contains(Flags::ZERO) {
-                    self.call(nn);
+                    self.call(nn, bus);
                 }
             }
 
             0xCC => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if self.f.contains(Flags::ZERO) {
-                    self.call(nn);
+                    self.call(nn, bus);
                 }
             }
 
             0xD4 => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if !self.f.contains(Flags::CARRY) {
-                    self.call(nn);
+                    self.call(nn, bus);
                 }
             }
 
             0xDC => {
-                let nn = self.get_immediate_u16();
+                let nn = self.get_immediate_u16(bus);
                 if self.f.contains(Flags::CARRY) {
-                    self.call(nn);
+                    self.call(nn, bus);
                 }
             }
 
             // 3.3.10 Restarts
 
             // 1. RST n
-            0xC7 => self.rst(0x00),
-            0xCF => self.rst(0x08),
-            0xD7 => self.rst(0x10),
-            0xDF => self.rst(0x18),
-            0xE7 => self.rst(0x20),
-            0xEF => self.rst(0x28),
-            0xF7 => self.rst(0x30),
-            0xFF => self.rst(0x38),
+            0xC7 => self.rst(0x00, bus),
+            0xCF => self.rst(0x08, bus),
+            0xD7 => self.rst(0x10, bus),
+            0xDF => self.rst(0x18, bus),
+            0xE7 => self.rst(0x20, bus),
+            0xEF => self.rst(0x28, bus),
+            0xF7 => self.rst(0x30, bus),
+            0xFF => self.rst(0x38, bus),
 
             // 3.3.11 Returns
 
             // 1. RET
             0xC9 => {
-                self.pc = self.read_sp_u16();
+                self.ret(bus)
             }
 
             // 2. RET cc
             0xC0 => {
                 if !self.f.contains(Flags::ZERO) {
-                    let nn = self.read_sp_u16();
-                    self.pc = nn;
+                    self.ret(bus)
                 }
-            }
-
-            // 3. RETI
-            0xD9 => {
-                self.interrupt_master_enable = true;
-                self.pc = self.read_sp_u16();
             }
 
             0xC8 => {
                 if self.f.contains(Flags::ZERO) {
-                    let nn = self.read_sp_u16();
-                    self.pc = nn;
+                    self.ret(bus)
                 }
             }
 
             0xD0 => {
                 if !self.f.contains(Flags::CARRY) {
-                    let nn = self.read_sp_u16();
-                    self.pc = nn;
+                    self.ret(bus)
                 }
             }
 
             0xD8 => {
                 if self.f.contains(Flags::CARRY) {
-                    let nn = self.read_sp_u16();
-                    self.pc = nn;
+                    self.ret(bus)
                 }
             }
 
+            // 3. RETI
+            0xD9 => {
+                self.ret(bus);
+                self.interrupt_master_enable = true;
+            }
+
+
             // 7. POP nn
             0xC1 => {
-                self.c = self.read_sp_u8();
-                self.b = self.read_sp_u8();
+                self.c = self.read_sp_u8(bus);
+                self.b = self.read_sp_u8(bus);
             }
             0xD1 => {
-                self.e = self.read_sp_u8();
-                self.d = self.read_sp_u8();
+                self.e = self.read_sp_u8(bus);
+                self.d = self.read_sp_u8(bus);
             }
             0xE1 => {
-                self.l = self.read_sp_u8();
-                self.h = self.read_sp_u8();
+                self.l = self.read_sp_u8(bus);
+                self.h = self.read_sp_u8(bus);
             }
             0xF1 => {
-                self.f.bits = self.read_sp_u8() & 0xf0;
-                self.a = self.read_sp_u8();
+                self.f.bits = self.read_sp_u8(bus) & 0xf0;
+                self.a = self.read_sp_u8(bus);
             }
 
             _ => {
                 println!(
                     "Unimplemented at pc={:x}, op={:x}: {}",
                     pc,
-                    self.read_byte(pc),
-                    lookup_op_code(self.read_byte(pc)).0
+                    self.read_byte(bus, pc),
+                    lookup_op_code(self.read_byte(bus, pc)).0
                 );
                 println!("{:?}", self);
                 unimplemented!()
             }
         }
 
-        self.lookup_op_code_for_pc(pc).1
+        self.lookup_op_code_for_pc(bus, pc).1
     }
 
     fn set_slr_flags(&mut self, c: bool, r: u8) {

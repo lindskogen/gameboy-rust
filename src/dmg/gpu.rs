@@ -3,6 +3,7 @@ use std::usize;
 use bit_field::BitField;
 
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
 use crate::dmg::intf::InterruptFlag;
 
@@ -12,6 +13,7 @@ pub const VRAM_SIZE: usize = VRAM_END - VRAM_BEGIN + 1;
 pub const OAM_SIZE: usize = 0xA0;
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct Lcdc: u8 {
         const LCD_DISPLAY_ENABLE = 0b1000_0000;
         const WINDOW_TILE_MAP_DISPLAY_SELECT = 0b0100_0000;
@@ -95,7 +97,7 @@ impl TilePixelValue {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct Stat {
     // Bit 6 - LYC=LY Coincidence Interrupt (1=Enable) (Read/Write)
     enable_ly_interrupt: bool,
@@ -120,11 +122,15 @@ impl Stat {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct GPU {
     lcdc: Lcdc,
     stat: Stat,
+
+    #[serde(with = "serde_arrays")]
     vram: [u8; VRAM_SIZE],
 
+    #[serde(with = "serde_arrays")]
     oam: [u8; OAM_SIZE],
 
     vram_bank: usize,
@@ -142,23 +148,23 @@ pub struct GPU {
     /** FF04 - DIV - Divider Register (R/W) */
     div: u8,
     /** FF05 - TIMA - Timer counter (R/W) */
-    tima: u8,
+    tima_counter: u8,
 
     /** FF06 - TMA - Timer Modulo (R/W) */
-    tma: u8,
+    tma_modulo: u8,
 
     /** FF07 - TAC - Timer Control (R/W) */
     tac: u8,
 
     cycles: u32,
-    timer_cycles: u32,
+    div_cycles: u32,
     timer_clock: u32,
     enable_debug_override: bool,
     pub interrupt_flag: InterruptFlag,
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
 enum StatMode {
     HBlank0 = 0x00,
     VBlank1 = 0x01,
@@ -188,13 +194,13 @@ impl GPU {
 
             div: 0x00,
 
-            tima: 0x00,
-            tma: 0x00,
+            tima_counter: 0x00,
+            tma_modulo: 0x00,
             tac: 0x00,
             enable_debug_override: false,
 
             cycles: 0,
-            timer_cycles: 0,
+            div_cycles: 0,
             timer_clock: 0,
             interrupt_flag: InterruptFlag::empty(),
         }
@@ -204,43 +210,51 @@ impl GPU {
         self.enable_debug_override = true;
     }
 
-    fn handle_timer(&mut self, cycles: u32) {
-        self.cycles = self.cycles.wrapping_add(cycles);
+    fn reset_div(&mut self) {
+        self.div_cycles = 0;
+        self.div = 0;
+    }
 
-        self.timer_cycles += cycles;
+    fn update_div(&mut self, cycles: u32) {
+        self.div_cycles += cycles;
 
-
-        if self.timer_cycles >= 256 {
+        while self.div_cycles >= 256 {
+            self.div_cycles -= 256;
             self.div = self.div.wrapping_add(1);
-            self.timer_cycles -= 256;
         }
+    }
 
-        let timer_enabled = (self.tac >> 2 & 0x01) != 0;
+    fn handle_timer(&mut self, elapsed: u32) {
+        self.update_div(elapsed);
+
+        let timer_enabled = self.tac.get_bit(2);
 
         if timer_enabled {
-            self.timer_clock = self.timer_clock.wrapping_add(cycles * 4);
+            self.timer_clock += elapsed;
 
-            let timer_freq = match self.tac & 0b11 {
-                1 => 262144,
-                2 => 65536,
-                3 => 16384,
-                _ => 4096
+            let step = match self.tac & 0b11 {
+                1 => 16,
+                2 => 64,
+                3 => 256,
+                _ => 1024
             };
 
-            while self.timer_clock >= (4194304 / timer_freq) {
-                let tima = self.tima;
-                let (new_tima, tima_overflow) = tima.overflowing_add(1);
-                self.tima = new_tima;
-                if tima_overflow {
+
+            while self.timer_clock >= step {
+                self.timer_clock -= step;
+
+                self.tima_counter = self.tima_counter.wrapping_add(1);
+
+                if self.tima_counter == 0 {
+                    self.tima_counter = self.tma_modulo;
                     self.interrupt_flag.insert(InterruptFlag::TIMER);
-                    self.tima = self.tma;
                 }
-                self.timer_clock -= 4194304 / timer_freq;
             }
         }
     }
 
     pub fn next(&mut self, elapsed: u32, buffer: &mut Vec<u32>) -> bool {
+        self.cycles += elapsed;
         self.handle_timer(elapsed);
 
 
@@ -379,13 +393,12 @@ impl GPU {
             0xff4a => self.wx,
             0xff4b => self.wy,
             0xff4f => self.vram_bank as u8 | 0xfe,
-            0xff04 => self.div as u8,
-            0xff05 => self.tima,
-            0xff06 => self.tma,
+            0xff04 => self.div,
+            0xff05 => self.tima_counter,
+            0xff06 => self.tma_modulo,
             0xff07 => self.tac,
             0xff0f => self.interrupt_flag.bits(),
             _ => unreachable!("MEM: Read from unmapped address: {:04X}", address)
-            // _ => { 0xff },
         }
     }
 
@@ -412,10 +425,13 @@ impl GPU {
             0xff4a => self.wx = value,
             0xff4b => self.wy = value,
             0xff4f => self.vram_bank = (value & 0x01) as usize,
-            0xff04 => self.div = 0, // Write to ff04 resets it to 0
-            0xff05 => self.tima = value,
-            0xff06 => self.tma = value,
+            0xff04 => self.reset_div(),
+            0xff05 => self.tima_counter = value,
+            0xff06 => self.tma_modulo = value,
             0xff07 => self.tac = value,
+            0xff68 | 0xff69 | 0xff6a | 0xff6b => {
+                // GameBoy Color only
+            }
 
             0xff0f => self.interrupt_flag = InterruptFlag::from_bits_truncate(value),
             _ => unreachable!("PPU: Write to unmapped address: {:04X}", address)
@@ -445,13 +461,11 @@ impl GPU {
         TilePixelValue::from_palette_and_u8(self.bgp, color)
     }
 
-    fn get_tile_location(&self, x: u8, y: u8) -> u16 {
+    fn get_tile_location(&self, tx: u8, ty: u8, base: u16) -> u16 {
         let tile_base = self.lcdc.bg_and_window_tile_data_select();
-        let tx = x as u16 / 8;
-        let ty = y as u16 / 8;
 
-        let bg_base = self.lcdc.bg_tile_map_display_select();
-        let title_addr = bg_base + ty * 32 + tx;
+
+        let title_addr = base + ty as u16 * 32 + tx as u16;
 
         let tile_number = self.read_vram(title_addr);
 
@@ -465,8 +479,8 @@ impl GPU {
         tile_base + tile_offset
     }
 
-    fn draw_tile_at(&self, x: u8, y: u8) -> TilePixelValue {
-        let tile_location = self.get_tile_location(x, y);
+    fn draw_tile_at(&self, x: u8, y: u8, base: u16) -> TilePixelValue {
+        let tile_location = self.get_tile_location(x / 8, y / 8, base);
 
         let tile_y = y % 8;
         let tile_x = x % 8;
@@ -482,15 +496,7 @@ impl GPU {
         for x in 0..160u16 {
             let index = y as usize * 160 + x as usize;
 
-            let mut tile_pixel_color = TilePixelValue::White;
-
-            if self.lcdc.bg_and_window_display_enable() {
-                tile_pixel_color = self.draw_tile_at(
-                    ((x + self.scx as u16) % 256) as u8,
-                    ((y + self.scy as u16) % 256) as u8,
-                );
-            }
-
+            let mut tile_pixel_color = self.draw_bg_px(x, y, window_line_match);
 
             if self.lcdc.obj_display_enable() && len > 0 {
                 if let Some(color) = self.draw_sprite_at(&sprites_to_draw[..len], x as u8, y as u8, tile_pixel_color == TilePixelValue::White) {
@@ -499,6 +505,28 @@ impl GPU {
             }
 
             buffer[index] = tile_pixel_color.to_rgb();
+        }
+    }
+
+    fn draw_bg_px(&self, x: u16, y: u16, window_line_match: bool) -> TilePixelValue {
+        if !self.lcdc.bg_and_window_display_enable() {
+            TilePixelValue::White
+        }
+        // else if self.lcdc.window_display_enable() && self.win_y_trigger && window_line_match && x as i16 >= self.wx as i16 - 7 {
+        //     let win_x = -((self.wx as i32) - 7) + (x as i32);
+        //     
+        //     self.draw_tile_at(
+        //         win_x as u8,
+        //         self.wc as u8,
+        //         self.lcdc.window_tile_map_display_select(),
+        //     )
+        // }
+        else {
+            self.draw_tile_at(
+                ((x + self.scx as u16) % 256) as u8,
+                ((y + self.scy as u16) % 256) as u8,
+                self.lcdc.bg_tile_map_display_select(),
+            )
         }
     }
 
@@ -571,7 +599,7 @@ impl GPU {
             let color = (if b1 & x_bit != 0 { 1 } else { 0 }) | (if b2 & x_bit != 0 { 2 } else { 0 });
 
             if color == 0 {
-                continue
+                continue;
             }
 
             if !bg_color_is_white && behind_non_white_bg {

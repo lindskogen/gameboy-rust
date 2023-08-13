@@ -1,7 +1,8 @@
 use std::iter;
 use crate::dmg::mem::RomBuffer;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 enum MBC {
     NoMbc,
     Mbc1,
@@ -37,7 +38,7 @@ impl TryFrom<u8> for MBC {
     }
 }
 
-
+#[derive(Serialize, Deserialize)]
 struct MBC0 {
     rom: RomBuffer,
 }
@@ -50,7 +51,7 @@ impl MBC0 {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 enum MBC1Mode {
     RomMode,
     RamMode,
@@ -69,6 +70,7 @@ impl TryFrom<u8> for MBC1Mode {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct MBC1 {
     rom: RomBuffer,
     ram: Vec<u8>,
@@ -174,12 +176,13 @@ impl MBC1 {
     }
 }
 
-
+#[derive(Serialize, Deserialize)]
 enum MBCType {
     Mbc0(MBC0),
     Mbc1(MBC1),
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct MBCWrapper {
     variant: MBCType,
 }

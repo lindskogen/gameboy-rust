@@ -1,5 +1,8 @@
 use bit_field::BitField;
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct Serial {
     value: Option<u8>,
     debug_print: bool,

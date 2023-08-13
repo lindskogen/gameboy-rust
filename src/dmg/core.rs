@@ -1,15 +1,15 @@
-use std::cell::RefCell;
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use std::rc::Rc;
+use serde::{Serialize, Deserialize};
 
 use crate::dmg::cpu::ProcessingUnit;
 use crate::dmg::input::JoypadInput;
 use crate::dmg::mem::{MemoryBus, RomBuffer};
 
+#[derive(Serialize, Deserialize)]
 pub struct Core {
-    bus: Rc<RefCell<MemoryBus>>,
+    bus: MemoryBus,
     cpu: ProcessingUnit,
 }
 
@@ -39,30 +39,29 @@ impl Core {
 
         let memory = MemoryBus::new(boot_rom_buffer, game_rom_buffer);
 
-        let shared_bus: Rc<RefCell<_>> = Rc::new(RefCell::new(memory));
 
         Self {
-            cpu: ProcessingUnit::new(shared_bus.clone()),
-            bus: shared_bus,
+            cpu: ProcessingUnit::new(),
+            bus: memory,
         }
     }
 
     pub fn initialize_gameboy_doctor(&mut self) {
         self.cpu.initialize_gameboy_doctor();
-        self.bus.borrow_mut().ppu.initialize_gameboy_doctor();
+        self.bus.ppu.initialize_gameboy_doctor();
     }
 
     pub fn step(&mut self, buffer: &mut Vec<u32>, keys_pressed: JoypadInput) -> bool {
-        self.bus.borrow_mut().input.update(keys_pressed);
-        let elapsed = self.cpu.next();
+        self.bus.input.update(keys_pressed);
+        let elapsed = self.cpu.next(&mut self.bus);
 
-        self.bus.borrow_mut().ppu.next(elapsed, buffer)
+        self.bus.ppu.next(elapsed, buffer)
     }
 
     pub fn read_rom_name(&self) -> String {
         let mut title = String::new();
         for i in 0x134..0x143 {
-            let i1 = self.bus.borrow().read_byte(i);
+            let i1 = self.bus.read_byte(i);
             if i1 == 0 {
                 break;
             }

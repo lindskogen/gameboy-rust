@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use bit_field::BitField;
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
 use crate::dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
@@ -11,6 +12,7 @@ use super::mem::MemoryBus;
 mod step;
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct Flags: u8 {
         const ZERO = 0b1000_0000;
         const N = 0b0100_0000;
@@ -19,7 +21,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ProcessingUnit {
     a: u8,
     b: u8,
@@ -32,7 +34,6 @@ pub struct ProcessingUnit {
     pc: u16,
     sp: u16,
 
-    bus: Rc<RefCell<MemoryBus>>,
 
     halted: bool,
     interrupt_master_enable: bool,
@@ -55,7 +56,7 @@ impl ProcessingUnit {
         self.pc = 0x0100;
     }
 
-    pub fn new(bus: Rc<RefCell<MemoryBus>>) -> ProcessingUnit {
+    pub fn new() -> ProcessingUnit {
         ProcessingUnit {
             a: 0,
             b: 0,
@@ -69,14 +70,12 @@ impl ProcessingUnit {
             sp: 0xFFFE,
             halted: false,
             interrupt_master_enable: false,
-            bus,
 
             enable_debugging: false,
         }
     }
 
     fn swap(&mut self, n: u8) -> u8 {
-
         self.f.set(Flags::ZERO, n == 0);
         self.f.remove(Flags::N);
         self.f.remove(Flags::H);
@@ -121,27 +120,27 @@ impl ProcessingUnit {
         self.l = v as u8;
     }
 
-    fn get_immediate_u8(&mut self) -> u8 {
-        let v = self.read_byte(self.pc);
+    fn get_immediate_u8(&mut self, bus: &MemoryBus) -> u8 {
+        let v = self.read_byte(bus, self.pc);
         self.pc += 1;
         v
     }
 
-    fn get_immediate_i8(&mut self) -> i8 {
-        let v = self.read_byte(self.pc) as i8;
+    fn get_immediate_i8(&mut self, bus: &MemoryBus) -> i8 {
+        let v = self.read_byte(bus, self.pc) as i8;
         self.pc += 1;
         v
     }
 
-    fn get_immediate_u16(&mut self) -> u16 {
-        let (msb, lsb) = (self.read_byte(self.pc + 1), self.read_byte(self.pc));
+    fn get_immediate_u16(&mut self, bus: &MemoryBus) -> u16 {
+        let (msb, lsb) = (self.read_byte(bus, self.pc + 1), self.read_byte(bus, self.pc));
         self.pc += 2;
 
         ((msb as u16) << 8) | (lsb as u16)
     }
 
-    fn write_byte(&mut self, addr: u16, value: u8) {
-        self.bus.borrow_mut().write_byte(addr, value);
+    fn write_byte(&mut self, bus: &mut MemoryBus, addr: u16, value: u8) {
+        bus.write_byte(addr, value);
     }
 
     fn daa(&mut self) {
@@ -162,22 +161,21 @@ impl ProcessingUnit {
         self.f.set(Flags::ZERO, self.a == 0);
     }
 
-    fn read_byte(&self, addr: u16) -> u8 {
-        self.bus.borrow().read_byte(addr)
+    fn read_byte(&self, bus: &MemoryBus, addr: u16) -> u8 {
+        bus.read_byte(addr)
     }
 
-    pub fn debug_print(&self, pc: u16) {
+    pub fn debug_print(&self, pc: u16, bus: &MemoryBus) {
         if self.enable_debugging {
-            println!("A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, pc, self.read_byte(pc), self.read_byte(pc+1), self.read_byte(pc+2), self.read_byte(pc+3));
+            println!("A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, pc, self.read_byte(bus, pc), self.read_byte(bus, pc + 1), self.read_byte(bus, pc + 2), self.read_byte(bus, pc + 3));
         }
-
     }
 
-    fn lookup_op_code_for_pc(&self, pc: u16) -> (&str, u32) {
-        if self.read_byte(pc) != 0xCB {
-            lookup_op_code(self.read_byte(pc))
+    fn lookup_op_code_for_pc(&self, bus: &MemoryBus, pc: u16) -> (&str, u32) {
+        if self.read_byte(bus, pc) != 0xCB {
+            lookup_op_code(self.read_byte(bus, pc))
         } else {
-            lookup_cb_prefix_op_code(self.read_byte(pc + 1))
+            lookup_cb_prefix_op_code(self.read_byte(bus, pc + 1))
         }
     }
 
@@ -209,25 +207,25 @@ impl ProcessingUnit {
         self.l = n;
     }
 
-    fn ld_hl(&mut self, n: u8) {
-        self.write_byte(self.get_hl(), n);
+    fn ld_hl(&mut self, n: u8, bus: &mut MemoryBus) {
+        self.write_byte(bus, self.get_hl(), n);
     }
 
-    fn check_and_execute_interrupts(&mut self) -> bool {
-        let interrupt_triggered = self.bus.borrow().check_interrupt();
+    fn check_and_execute_interrupts(&mut self, bus: &mut MemoryBus) -> bool {
+        let interrupt_triggered = bus.check_interrupt();
 
         if interrupt_triggered {
             self.halted = false;
 
             if self.interrupt_master_enable {
-                let interrupt_flags = self.bus.borrow().ppu.interrupt_flag;
+                let interrupt_flags = bus.ppu.interrupt_flag;
                 if let Some(addr) = interrupt_flags.interrupt_starting_address() {
                     self.interrupt_master_enable = false;
                     let triggered = interrupt_flags.highest_prio_bit();
 
-                    self.bus.borrow_mut().ppu.interrupt_flag.remove(triggered);
+                    bus.ppu.interrupt_flag.remove(triggered);
 
-                    self.call(addr);
+                    self.call(addr, bus);
 
                     return true;
                 }
@@ -238,8 +236,8 @@ impl ProcessingUnit {
         false
     }
 
-    fn add_16_imm(&mut self, a: u16) -> u16 {
-        let b = self.get_immediate_i8() as i16 as u16;
+    fn add_16_imm(&mut self, a: u16, bus: &MemoryBus) -> u16 {
+        let b = self.get_immediate_i8(bus) as i16 as u16;
 
         self.f.remove(Flags::N);
         self.f.remove(Flags::ZERO);
@@ -260,9 +258,9 @@ impl ProcessingUnit {
         self.set_hl(new_hl);
     }
 
-    fn lda_hli(&mut self) {
+    fn lda_hli(&mut self, bus: &MemoryBus) {
         let hl = self.hli();
-        self.a = self.read_byte(hl);
+        self.a = self.read_byte(bus, hl);
     }
 
     fn hli(&mut self) -> u16 {
@@ -277,14 +275,19 @@ impl ProcessingUnit {
         hl
     }
 
-    fn ldi_hla(&mut self) {
-        self.ld_hl(self.a);
+    fn ldi_hla(&mut self, bus: &mut MemoryBus) {
+        self.ld_hl(self.a, bus);
 
         self.hli();
     }
 
-    fn call(&mut self, nn: u16) {
-        self.push_u16(self.pc);
+    fn ret(&mut self, bus: &MemoryBus) {
+        let nn = self.read_sp_u16(bus);
+        self.pc = nn;
+    }
+
+    fn call(&mut self, nn: u16, bus: &mut MemoryBus) {
+        self.push_u16(self.pc, bus);
         self.pc = nn;
     }
 
@@ -345,19 +348,19 @@ impl ProcessingUnit {
         self.reset_and_set_zero(self.a);
     }
 
-    fn push_u8(&mut self, n: u8) {
+    fn push_u8(&mut self, n: u8, bus: &mut MemoryBus) {
         self.sp = self.sp.wrapping_sub(1);
-        self.write_byte(self.sp, n);
+        self.write_byte(bus, self.sp, n);
     }
 
     fn get_bits(n: u16) -> (u8, u8) {
         (((n & 0xff00) >> 8) as u8, (n & 0xff) as u8)
     }
 
-    fn push_u16(&mut self, n: u16) {
+    fn push_u16(&mut self, n: u16, bus: &mut MemoryBus) {
         let (n_msb, n_lsb) = Self::get_bits(n);
-        self.push_u8(n_msb);
-        self.push_u8(n_lsb);
+        self.push_u8(n_msb, bus);
+        self.push_u8(n_lsb, bus);
     }
 
     fn reset_and_set_carry_zero(&mut self, prev: u8, new: u8) {
@@ -371,17 +374,17 @@ impl ProcessingUnit {
         self.f.set(Flags::ZERO, n == 0);
     }
 
-    fn read_sp_u16(&mut self) -> u16 {
-        let lsb = self.read_byte(self.sp) as u16;
+    fn read_sp_u16(&mut self, bus: &MemoryBus) -> u16 {
+        let lsb = self.read_byte(bus, self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
-        let msb = self.read_byte(self.sp) as u16;
+        let msb = self.read_byte(bus, self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
         (msb << 8) | lsb
     }
 
-    fn read_sp_u8(&mut self) -> u8 {
-        let x = self.read_byte(self.sp);
+    fn read_sp_u8(&mut self, bus: &MemoryBus) -> u8 {
+        let x = self.read_byte(bus, self.sp);
         self.sp = self.sp.wrapping_add(1);
 
         return x;
@@ -426,7 +429,7 @@ impl ProcessingUnit {
     }
 
     fn and(&mut self, n: u8) {
-        self.a =  self.a & n;
+        self.a = self.a & n;
         self.reset_and_set_zero(self.a);
         self.f.insert(Flags::H);
     }
@@ -436,8 +439,8 @@ impl ProcessingUnit {
         self.reset_and_set_zero(self.a);
     }
 
-    fn rst(&mut self, addr: u16) {
-        self.push_u16(self.pc);
+    fn rst(&mut self, addr: u16, bus: &mut MemoryBus) {
+        self.push_u16(self.pc, bus);
         self.pc = addr;
     }
 
@@ -466,7 +469,7 @@ impl ProcessingUnit {
         self.f.set(Flags::ZERO, r == 0);
         self.f.set(Flags::H, (self.a & 0x0f) < (n & 0x0f) + carry);
         self.f.insert(Flags::N);
-        self.f.set(Flags::CARRY,  (self.a as u16) < (n as u16) + (carry as u16));
+        self.f.set(Flags::CARRY, (self.a as u16) < (n as u16) + (carry as u16));
 
         self.a = r;
     }
@@ -481,8 +484,7 @@ mod tests {
     use crate::dmg::mem::MemoryBus;
 
     fn setup_cpu_for_compare() -> ProcessingUnit {
-        let bootloader = [0x40u8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.f = Flags::empty();
         cpu.a = 0x3c;
@@ -519,8 +521,9 @@ mod tests {
     #[test]
     fn cp_hl_works() {
         let mut cpu = setup_cpu_for_compare();
+        let bus = MemoryBus::default();
 
-        cpu.compare_a_with(cpu.read_byte(cpu.get_hl()));
+        cpu.compare_a_with(cpu.read_byte(&bus, cpu.get_hl()));
 
         assert!(!cpu.f.contains(Flags::ZERO));
         assert!(!cpu.f.contains(Flags::H));
@@ -529,8 +532,7 @@ mod tests {
     }
 
     fn setup_cpu_for_add_hl() -> ProcessingUnit {
-        let bootloader = [0u8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.f = Flags::empty();
         cpu.set_hl(0x8a23);
@@ -570,8 +572,7 @@ mod tests {
     // LDI
 
     fn setup_cpu_for_ldi() -> ProcessingUnit {
-        let bootloader = [0x56u8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.f = Flags::empty();
         cpu.set_hl(0x0ff);
@@ -582,8 +583,9 @@ mod tests {
     #[test]
     fn ldi_a_works() {
         let mut cpu = setup_cpu_for_ldi();
+        let bus = MemoryBus::default();
 
-        cpu.lda_hli();
+        cpu.lda_hli(&bus);
 
         assert_eq!(cpu.a, 0x56);
         assert_eq!(cpu.get_hl(), 0x100);
@@ -593,7 +595,7 @@ mod tests {
 
     fn setup_cpu_for_ldi_hla() -> ProcessingUnit {
         let bootloader = [0x56u8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.a = 0x56;
         cpu.f = Flags::empty();
@@ -605,10 +607,11 @@ mod tests {
     #[test]
     fn ldi_hla_works() {
         let mut cpu = setup_cpu_for_ldi_hla();
+        let mut bus = MemoryBus::default();
 
-        cpu.ldi_hla();
+        cpu.ldi_hla(&mut bus);
 
-        assert_eq!(cpu.read_byte(cpu.get_hl()), 0x56);
+        assert_eq!(cpu.read_byte(&bus, cpu.get_hl()), 0x56);
         assert_eq!(cpu.get_hl(), 0x68);
     }
 
@@ -616,7 +619,7 @@ mod tests {
 
     fn setup_cpu_for_xor() -> ProcessingUnit {
         let bootloader = [0x8au8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.a = 0xff;
         cpu.f = Flags::empty();
@@ -650,8 +653,8 @@ mod tests {
     #[test]
     fn xor_hl_works() {
         let mut cpu = setup_cpu_for_xor();
-
-        cpu.xor_a(cpu.read_byte(cpu.get_hl()));
+        let bus = MemoryBus::default();
+        cpu.xor_a(cpu.read_byte(&bus, cpu.get_hl()));
 
         assert_eq!(cpu.a, 0x75);
 
@@ -662,7 +665,7 @@ mod tests {
 
     fn setup_cpu_for_or() -> ProcessingUnit {
         let bootloader = [0x0fu8; 256];
-        let mut cpu = ProcessingUnit::new(Rc::new(RefCell::new(MemoryBus::new(bootloader, None))));
+        let mut cpu = ProcessingUnit::new();
 
         cpu.a = 0x5a;
         cpu.f = Flags::empty();
@@ -696,8 +699,8 @@ mod tests {
     #[test]
     fn or_hl_works() {
         let mut cpu = setup_cpu_for_or();
-
-        cpu.or(cpu.read_byte(cpu.get_hl()));
+        let bus = MemoryBus::default();
+        cpu.or(cpu.read_byte(&bus, cpu.get_hl()));
 
         assert_eq!(cpu.a, 0x5f);
 

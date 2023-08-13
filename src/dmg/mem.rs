@@ -15,6 +15,7 @@ use crate::dmg::input::Joypad;
 use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
 use crate::dmg::serial::Serial;
+use serde::{Serialize, Deserialize};
 
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
@@ -22,13 +23,18 @@ const ZRAM_SIZE: usize = 0x7F;
 
 pub type RomBuffer = Vec<u8>;
 
+#[derive(Serialize, Deserialize)]
 pub struct MemoryBus {
+    #[serde(with = "serde_arrays")]
     wram: [u8; WRAM_SIZE],
+    #[serde(with = "serde_arrays")]
     zram: [u8; ZRAM_SIZE],
     boot_rom_disabled: bool,
     mbc: MBCWrapper,
     serial: Serial,
     wram_bank: usize,
+
+    #[serde(with = "serde_arrays")]
     boot_rom: [u8; 256],
     pub input: Joypad,
     pub ppu: GPU,

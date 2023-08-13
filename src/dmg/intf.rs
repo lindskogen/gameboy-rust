@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct InterruptFlag: u8 {
         const V_BLANK  = 1 << 0;
         const LCD_STAT = 1 << 1;

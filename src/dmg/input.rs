@@ -1,7 +1,9 @@
 use bit_field::BitField;
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct JoypadInput: u8 {
         const DOWN    = 1 << 0;
         const LEFT    = 1 << 1;
@@ -15,6 +17,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct JoypadOutput: u8 {
         const RIGHT_OR_A    = 1 << 0;
         const LEFT_OR_B     = 1 << 1;
@@ -23,12 +26,13 @@ bitflags! {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 enum JoypadMode {
     Action,
     Direction,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Joypad {
     mode: JoypadMode,
     input: JoypadInput,
