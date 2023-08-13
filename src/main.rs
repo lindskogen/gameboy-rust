@@ -1,10 +1,11 @@
 use std::env;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
 use dmg::dmg::core::Core;
 use dmg::dmg::input::JoypadInput;
+use dmg::state::{restore_state, save_state};
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -29,7 +30,16 @@ fn main() {
     window.limit_update_rate(Some(Duration::from_micros(16600)));
 
 
-    let mut core = Core::load("./dmg_boot.bin", game_rom);
+    let new_core = Core::load("./dmg_boot.bin", game_rom);
+
+    let old_core = restore_state();
+
+    let mut core = match old_core {
+        Some(c) if c.read_rom_name() == new_core.read_rom_name() => {
+            c
+        }
+        _ => new_core
+    };
 
     // core.initialize_gameboy_doctor();
 
@@ -61,6 +71,8 @@ fn main() {
             write_buffer_to_file(&buffer);
         }
     }
+
+    let _ = save_state(&core);
 }
 
 fn write_buffer_to_file(buffer: &Vec<u32>) {
