@@ -35,6 +35,8 @@ impl Lcdc {
         self.contains(Lcdc::LCD_DISPLAY_ENABLE)
     }
 
+    fn window_display_enable(&self) -> bool { self.contains(Lcdc::WINDOW_DISPLAY_ENABLE) }
+
     fn bg_and_window_tile_data_select(&self) -> u16 {
         if self.contains(Lcdc::BG_AND_WINDOW_TILE_DATA_SELECT) {
             0x8000
@@ -45,6 +47,14 @@ impl Lcdc {
 
     fn bg_and_window_display_enable(&self) -> bool {
         self.contains(Lcdc::BG_AND_WINDOW_DISPLAY)
+    }
+
+    fn window_tile_map_display_select(&self) -> u16 {
+        if self.contains(Lcdc::WINDOW_TILE_MAP_DISPLAY_SELECT) {
+            0x9c00
+        } else {
+            0x9800
+        }
     }
 
     fn bg_tile_map_display_select(&self) -> u16 {
@@ -137,6 +147,9 @@ pub struct GPU {
 
     scy: u8,
     scx: u8,
+
+    win_y_trigger: bool,
+    wc: i32,
     wy: u8,
     wx: u8,
     ly: u8,
@@ -184,8 +197,12 @@ impl GPU {
 
             scy: 0x00,
             scx: 0x00,
+
+            win_y_trigger: false,
+            wc: 0x00,
             wx: 0x00,
             wy: 0x00,
+
             ly: 0x00,
             lc: 0x00,
             bgp: 0x00,
@@ -267,6 +284,10 @@ impl GPU {
 
         match self.stat.mode {
             StatMode::OamRead2 => {
+                if self.ly >= self.wy {
+                    self.win_y_trigger = true;
+                }
+
                 if self.cycles >= 80 {
                     self.cycles = 80;
                     self.stat.mode = StatMode::Transfer3;
@@ -322,6 +343,8 @@ impl GPU {
                             self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                         }
                         self.ly = 0;
+                        self.wc = 0;
+                        self.win_y_trigger = false;
                     }
                 }
             }
@@ -390,8 +413,8 @@ impl GPU {
             0xff47 => self.bgp,
             0xff48 => self.pal0,
             0xff49 => self.pal1,
-            0xff4a => self.wx,
-            0xff4b => self.wy,
+            0xff4a => self.wy,
+            0xff4b => self.wx,
             0xff4f => self.vram_bank as u8 | 0xfe,
             0xff04 => self.div,
             0xff05 => self.tima_counter,
@@ -422,8 +445,8 @@ impl GPU {
             0xff47 => self.bgp = value,
             0xff48 => self.pal0 = value,
             0xff49 => self.pal1 = value,
-            0xff4a => self.wx = value,
-            0xff4b => self.wy = value,
+            0xff4a => self.wy = value,
+            0xff4b => self.wx = value,
             0xff4f => self.vram_bank = (value & 0x01) as usize,
             0xff04 => self.reset_div(),
             0xff05 => self.tima_counter = value,
@@ -482,21 +505,27 @@ impl GPU {
     fn draw_tile_at(&self, x: u8, y: u8, base: u16) -> TilePixelValue {
         let tile_location = self.get_tile_location(x / 8, y / 8, base);
 
-        let tile_y = y % 8;
         let tile_x = x % 8;
+        let tile_y = y % 8;
 
         self.get_pixel_color(tile_location, tile_y, tile_x)
     }
 
-    fn render_line_into_buffer(&self, buffer: &mut Vec<u32>) {
+    fn render_line_into_buffer(&mut self, buffer: &mut Vec<u32>) {
         let y = self.ly as u16;
 
         let (sprites_to_draw, len) = self.populate_sprites_to_render(y);
 
+        let mut win_x_trigger = false;
+
         for x in 0..160u16 {
             let index = y as usize * 160 + x as usize;
 
-            let mut tile_pixel_color = self.draw_bg_px(x, y, window_line_match);
+            if self.lcdc.window_display_enable() && self.win_y_trigger && !win_x_trigger {
+                win_x_trigger = self.wx > 0 && x + 7 >= self.wx as u16;
+            }
+
+            let mut tile_pixel_color = self.draw_bg_px(x, y, win_x_trigger);
 
             if self.lcdc.obj_display_enable() && len > 0 {
                 if let Some(color) = self.draw_sprite_at(&sprites_to_draw[..len], x as u8, y as u8, tile_pixel_color == TilePixelValue::White) {
@@ -506,22 +535,22 @@ impl GPU {
 
             buffer[index] = tile_pixel_color.to_rgb();
         }
+
+        if win_x_trigger {
+            self.wc += 1;
+        }
     }
 
-    fn draw_bg_px(&self, x: u16, y: u16, window_line_match: bool) -> TilePixelValue {
+    fn draw_bg_px(&self, x: u16, y: u16, win_x_trigger: bool) -> TilePixelValue {
         if !self.lcdc.bg_and_window_display_enable() {
             TilePixelValue::White
-        }
-        // else if self.lcdc.window_display_enable() && self.win_y_trigger && window_line_match && x as i16 >= self.wx as i16 - 7 {
-        //     let win_x = -((self.wx as i32) - 7) + (x as i32);
-        //     
-        //     self.draw_tile_at(
-        //         win_x as u8,
-        //         self.wc as u8,
-        //         self.lcdc.window_tile_map_display_select(),
-        //     )
-        // }
-        else {
+        } else if win_x_trigger {
+            self.draw_tile_at(
+                (x + 7 - (self.wx as u16)) as u8,
+                self.wc as u8,
+                self.lcdc.window_tile_map_display_select(),
+            )
+        } else {
             self.draw_tile_at(
                 ((x + self.scx as u16) % 256) as u8,
                 ((y + self.scy as u16) % 256) as u8,
