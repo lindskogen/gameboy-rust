@@ -34,15 +34,13 @@ pub struct ProcessingUnit {
     pc: u16,
     sp: u16,
 
-
     halted: bool,
     interrupt_master_enable: bool,
     enable_debugging: bool,
 }
 
 impl ProcessingUnit {
-    pub fn initialize_gameboy_doctor(&mut self) {
-        self.enable_debugging = true;
+    pub fn skip_boot_rom(&mut self) {
         self.a = 0x01;
         self.f = Flags::CARRY | Flags::H | Flags::ZERO;
         assert_eq!(self.f.bits, 0xb0);
@@ -54,6 +52,10 @@ impl ProcessingUnit {
         self.l = 0x4d;
         self.sp = 0xFFFE;
         self.pc = 0x0100;
+    }
+    pub fn initialize_gameboy_doctor(&mut self) {
+        self.enable_debugging = true;
+        self.skip_boot_rom();
     }
 
     pub fn new() -> ProcessingUnit {

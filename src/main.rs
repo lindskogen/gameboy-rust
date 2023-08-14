@@ -29,8 +29,7 @@ fn main() {
 
     window.limit_update_rate(Some(Duration::from_micros(16600)));
 
-
-    let new_core = Core::load("./dmg_boot.bin", game_rom);
+    let new_core = Core::load_without_boot_rom(game_rom);
 
     let old_core = restore_state();
 

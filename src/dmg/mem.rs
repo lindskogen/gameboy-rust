@@ -59,10 +59,20 @@ impl Default for MemoryBus {
 }
 
 impl MemoryBus {
-    pub fn new(bootloader: [u8; 256], rom: Option<RomBuffer>) -> MemoryBus {
+    pub fn new_without_boot_rom(rom: Option<RomBuffer>) -> MemoryBus {
+        let mut bus = Self::new(None, rom);
+
+        // Initialize LCDC
+        bus.write_byte(0xff40, 0x91);
+
+        bus
+    }
+    pub fn new(bootloader: Option<[u8; 256]>, rom: Option<RomBuffer>) -> MemoryBus {
         let mut boot_rom = [0x00; 256];
 
-        boot_rom[..256].copy_from_slice(&bootloader);
+        if let Some(rom) = bootloader {
+            boot_rom[..256].copy_from_slice(&rom);
+        }
 
 
         let mbc = rom.map(|r| MBCWrapper::new(r)).unwrap_or_default();
@@ -75,7 +85,7 @@ impl MemoryBus {
             mbc,
             serial: Serial::default(),
             boot_rom,
-            boot_rom_disabled: false,
+            boot_rom_disabled: bootloader.is_none(),
             input: Joypad::default(),
             ppu: GPU::new(),
             interrupt_enable: InterruptFlag::empty(),

@@ -37,12 +37,22 @@ impl Core {
         let game_rom_buffer =
             game_rom.map(|filename| read_rom_file(&filename).expect("Failed to read game rom"));
 
-        let memory = MemoryBus::new(boot_rom_buffer, game_rom_buffer);
-
-
         Self {
             cpu: ProcessingUnit::new(),
-            bus: memory,
+            bus: MemoryBus::new(Some(boot_rom_buffer), game_rom_buffer),
+        }
+    }
+
+    pub fn load_without_boot_rom(game_rom: Option<String>) -> Core {
+        let game_rom_buffer =
+            game_rom.map(|filename| read_rom_file(&filename).expect("Failed to read game rom"));
+
+        let mut cpu = ProcessingUnit::new();
+        cpu.skip_boot_rom();
+
+        Self {
+            cpu,
+            bus: MemoryBus::new_without_boot_rom(game_rom_buffer),
         }
     }
 
