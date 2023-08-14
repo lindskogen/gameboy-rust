@@ -312,7 +312,7 @@ impl GPU {
                         self.interrupt_flag.insert(InterruptFlag::LCD_STAT);
                     }
 
-                    if self.ly == 143 {
+                    if self.ly == 144 {
                         self.stat.mode = StatMode::VBlank1;
                         self.interrupt_flag.insert(InterruptFlag::V_BLANK);
                         if self.stat.enable_m1_interrupt {
