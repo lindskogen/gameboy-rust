@@ -11,17 +11,19 @@ pub struct Serial {
 impl Default for Serial {
     fn default() -> Self {
         Self {
-            debug_print: true,
+            debug_print: false,
             value: None,
         }
     }
 }
 
 impl Serial {
-    pub fn read(&self, _addr: u16) -> u8 {
+    pub fn read(&self, addr: u16) -> u8 {
         // TODO: implement Serial transfers some day
-
-        0xff
+        match addr {
+            0xff01 | 0xff02 => 0x00,
+            _ => unreachable!("SERIAL: Read from unmapped address: {:04X}", addr)
+        }
     }
 
     pub fn write(&mut self, addr: u16, v: u8) {

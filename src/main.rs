@@ -1,7 +1,10 @@
 use std::env;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use cpal::traits::DeviceTrait;
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
+use dmg::dmg::audio::setup_audio_device;
 
 use dmg::dmg::core::Core;
 use dmg::dmg::input::JoypadInput;
@@ -17,7 +20,8 @@ fn main() {
         eprintln!("Loading {}", name);
     }
 
-    let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+    let mut display_buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+
 
     let mut options = WindowOptions::default();
     options.scale = Scale::X4;
@@ -28,6 +32,9 @@ fn main() {
     });
 
     window.limit_update_rate(Some(Duration::from_micros(16600)));
+
+
+    let (audio_player, audio_stream) = setup_audio_device();
 
     let new_core = Core::load_without_boot_rom(game_rom);
 
@@ -48,30 +55,38 @@ fn main() {
 
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let mut keys_pressed = JoypadInput::empty();
+        let keys_pressed = detect_keys(&window);
 
-        if window.is_key_down(Key::Up) { keys_pressed |= JoypadInput::UP; }
-        if window.is_key_down(Key::Left) { keys_pressed |= JoypadInput::LEFT; }
-        if window.is_key_down(Key::Down) { keys_pressed |= JoypadInput::DOWN; }
-        if window.is_key_down(Key::Right) { keys_pressed |= JoypadInput::RIGHT; }
-        if window.is_key_down(Key::Enter) { keys_pressed |= JoypadInput::START; }
-        if window.is_key_down(Key::RightShift) { keys_pressed |= JoypadInput::SELECT; }
-        if window.is_key_down(Key::Z) { keys_pressed |= JoypadInput::A; }
-        if window.is_key_down(Key::X) { keys_pressed |= JoypadInput::B; }
+        let mut audio_buffer = audio_player.buffer.lock().unwrap();
 
-        let should_render = core.step(&mut buffer, keys_pressed);
+        let should_render = core.step(&mut display_buffer, &mut audio_buffer, keys_pressed);
 
         if should_render {
             // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-            window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+            window.update_with_buffer(&display_buffer, WIDTH, HEIGHT).unwrap();
         }
 
         if window.is_key_down(Key::LeftSuper) && window.is_key_pressed(Key::S, KeyRepeat::Yes) {
-            write_buffer_to_file(&buffer);
+            write_buffer_to_file(&display_buffer);
         }
     }
 
     let _ = save_state(&core);
+}
+
+fn detect_keys(window: &Window) -> JoypadInput {
+    let mut keys_pressed = JoypadInput::empty();
+
+    if window.is_key_down(Key::Up) { keys_pressed |= JoypadInput::UP; }
+    if window.is_key_down(Key::Left) { keys_pressed |= JoypadInput::LEFT; }
+    if window.is_key_down(Key::Down) { keys_pressed |= JoypadInput::DOWN; }
+    if window.is_key_down(Key::Right) { keys_pressed |= JoypadInput::RIGHT; }
+    if window.is_key_down(Key::Enter) { keys_pressed |= JoypadInput::START; }
+    if window.is_key_down(Key::RightShift) { keys_pressed |= JoypadInput::SELECT; }
+    if window.is_key_down(Key::Z) { keys_pressed |= JoypadInput::A; }
+    if window.is_key_down(Key::X) { keys_pressed |= JoypadInput::B; }
+
+    keys_pressed
 }
 
 fn write_buffer_to_file(buffer: &Vec<u32>) {

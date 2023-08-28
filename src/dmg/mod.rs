@@ -7,3 +7,5 @@ mod mem;
 mod mbc;
 pub mod input;
 mod serial;
+mod sound;
+pub mod audio;

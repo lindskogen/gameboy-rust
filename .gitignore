@@ -4,5 +4,6 @@
 *.bin
 *.asm
 *.gb
+*.sav
 *.log
 cpu_instrs/

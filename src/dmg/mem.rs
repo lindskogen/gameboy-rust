@@ -16,6 +16,8 @@ use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
 use crate::dmg::serial::Serial;
 use serde::{Serialize, Deserialize};
+use crate::dmg::sound::apu::Apu;
+use crate::dmg::sound::traits::Mem;
 
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
@@ -38,6 +40,9 @@ pub struct MemoryBus {
     boot_rom: [u8; 256],
     pub input: Joypad,
     pub ppu: GPU,
+
+    #[serde(skip)]
+    pub apu: Apu,
     pub interrupt_enable: InterruptFlag,
 }
 
@@ -50,6 +55,7 @@ impl Default for MemoryBus {
             serial: Serial::default(),
             mbc: MBCWrapper::default(),
             ppu: GPU::new(),
+            apu: Apu::default(),
             boot_rom: [0x00; 256],
             input: Joypad::default(),
             boot_rom_disabled: false,
@@ -88,6 +94,7 @@ impl MemoryBus {
             boot_rom_disabled: bootloader.is_none(),
             input: Joypad::default(),
             ppu: GPU::new(),
+            apu: Apu::default(),
             interrupt_enable: InterruptFlag::empty(),
         }
     }
@@ -109,7 +116,7 @@ impl MemoryBus {
             0xff40..=0xff4f => self.ppu.write_vram(addr, value),
             0xff68..=0xff6b => self.ppu.write_vram(addr, value),
             0xff04..=0xff07 => self.ppu.write_vram(addr, value),
-            0xff10..=0xff3f => { /* TODO: sound */ }
+            0xff10..=0xff3f => self.apu.write(addr, value),
             0xff0f => self.ppu.write_vram(addr, value), // TODO: move interrupt flags here
             0xff50 => {
                 self.boot_rom_disabled = value == 1;
@@ -146,7 +153,7 @@ impl MemoryBus {
             0xff40..=0xff4f => self.ppu.read_vram(addr),
             0xff68..=0xff6b => self.ppu.read_vram(addr),
             0xff04..=0xff07 => self.ppu.read_vram(addr),
-            0xff10..=0xff3f => { /* TODO: sound */ 0xff }
+            0xff10..=0xff3f => self.apu.read(addr),
             0xfea0..=0xfeff => { /* Unusable */ 0xff }
             0xff80..=0xfffe => self.zram[address & 0x007f],
             0xff0f => self.ppu.read_vram(addr), // TODO: move interrupt flags here
