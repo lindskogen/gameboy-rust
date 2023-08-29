@@ -248,8 +248,6 @@ impl Mem for Apu {
                 } else if !self.enabled && enable_apu {
                     self.frame_sequencer = 0;
                 }
-
-                println!("enable apu {}", enable_apu);
                 self.enabled = enable_apu;
             }
             0xff30..=0xff3f => self.channel3.write(addr, v),
