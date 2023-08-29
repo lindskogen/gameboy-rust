@@ -6,7 +6,7 @@ use crate::dmg::sound::volume_envelope::VolumeEnvelope;
 pub struct Channel4 {
     pub common: ChannelCommon,
 
-    timer: u8,
+    timer: u16,
     clock_shift: u8,
     width_mode: bool,
     divisor_code: u8,
@@ -88,7 +88,7 @@ impl Tick for Channel4 {
         self.timer = self.timer.saturating_sub(1);
 
         if self.timer == 0 {
-            self.timer = self.divisors[self.divisor_code as usize] << self.clock_shift;
+            self.timer = (self.divisors[self.divisor_code as usize] as u16) << (self.clock_shift as u16);
 
             let result = ((self.lfsr & 1) ^ ((self.lfsr >> 1) & 1)) != 0;
             self.lfsr >>= 1;
@@ -111,7 +111,7 @@ impl Tick for Channel4 {
 impl Channel4 {
     fn trigger(&mut self) {
         self.volume_envelope.trigger();
-        self.timer = self.divisors[self.divisor_code as usize] << self.clock_shift;
+        self.timer = (self.divisors[self.divisor_code as usize] as u16) << (self.clock_shift as u16);
 
         self.lfsr = 0x7fff;
 
