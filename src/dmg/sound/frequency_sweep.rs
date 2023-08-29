@@ -2,7 +2,7 @@ use bit_field::BitField;
 use crate::dmg::sound::traits::Tick;
 
 pub struct FrequencySweep {
-    pub enabled: bool,
+    enabled: bool,
     overflow: bool,
     has_negated: bool,
     timer: u8,
@@ -46,6 +46,10 @@ impl FrequencySweep {
         if self.has_negated && !self.negate {
             self.overflow = true;
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        !self.overflow
     }
 
     pub fn set_nr13(&mut self, v: u8) {

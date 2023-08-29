@@ -50,7 +50,7 @@ impl Mem for Channel1 {
             0xff10 => {
                 self.frequency_sweep.set_nr10(v);
 
-                if !self.frequency_sweep.enabled {
+                if !self.frequency_sweep.is_enabled() {
                     self.common.channel_enabled = false;
                 }
             }
@@ -59,7 +59,6 @@ impl Mem for Channel1 {
                 self.common.length_counter.set_length(v & 0x3f)
             }
             0xff12 => {
-
                 self.common.dac_enabled = (v & 0xf8) != 0;
                 self.common.channel_enabled = self.common.channel_enabled && self.common.dac_enabled;
                 self.volume_envelope.set_nr12(v);
@@ -112,7 +111,7 @@ impl Channel1 {
         self.timer = (2048 - self.frequency_sweep.get_frequency()) << 2;
         self.volume_envelope.trigger();
         self.frequency_sweep.trigger();
-        if self.frequency_sweep.enabled {
+        if self.frequency_sweep.is_enabled() {
             self.common.channel_enabled = self.common.dac_enabled;
         } else {
             self.common.channel_enabled = false;
@@ -122,7 +121,7 @@ impl Channel1 {
     pub fn tick_frequency_sweep(&mut self) {
         self.frequency_sweep.tick();
 
-        if !self.frequency_sweep.enabled {
+        if !self.frequency_sweep.is_enabled() {
             self.common.channel_enabled = false;
         }
     }
