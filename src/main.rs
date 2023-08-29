@@ -71,7 +71,7 @@ fn main() {
         }
     }
 
-    let _ = save_state(&core);
+    // let _ = save_state(&core);
 }
 
 fn detect_keys(window: &Window) -> JoypadInput {

@@ -1,10 +1,11 @@
+use bit_field::BitField;
 use crate::dmg::sound::traits::Tick;
 
 pub struct FrequencySweep {
-    enabled: bool,
+    pub enabled: bool,
     overflow: bool,
     has_negated: bool,
-    timer: u32,
+    timer: u8,
     frequency: u16,
     shadow_frequency: u16,
     period: u8,
@@ -29,11 +30,42 @@ impl FrequencySweep {
 
         new_freq
     }
-}
 
-impl FrequencySweep {
     pub fn get_frequency(&self) -> u32 {
         self.frequency as u32
+    }
+
+    pub fn get_nr10(&self) -> u8 {
+        0x80 | (self.period << 4) | (if self.negate { 0b100 } else { 0 }) | self.shift
+    }
+    pub fn set_nr10(&mut self, v: u8) {
+        self.period = (v >> 4) & 0b111;
+        self.negate = v.get_bit(3);
+        self.shift = v & 0b111;
+
+        if self.has_negated && !self.negate {
+            self.overflow = true;
+        }
+    }
+
+    pub fn set_nr13(&mut self, v: u8) {
+        self.frequency = (self.frequency & 0x700) | v as u16;
+    }
+
+    pub fn set_nr14(&mut self, v: u8) {
+        self.frequency = (self.frequency & 0xff) | ((v as u16 & 0b111) << 8)
+    }
+
+    pub fn trigger(&mut self) {
+        self.overflow = false;
+        self.has_negated = false;
+        self.shadow_frequency = self.frequency;
+        self.timer = if self.period != 0 { self.period } else { 8 };
+        self.enabled = self.period != 0 || self.shift != 0;
+
+        if self.shift > 0 {
+            self.calculate();
+        }
     }
 }
 
@@ -62,7 +94,7 @@ impl Tick for FrequencySweep {
         }
 
         if self.timer == 0 {
-            self.timer = if self.period != 0 { self.period } else { 8 } as u32;
+            self.timer = if self.period != 0 { self.period } else { 8 };
 
             if self.period != 0 {
                 let new_freq = self.calculate();

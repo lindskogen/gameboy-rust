@@ -1,3 +1,4 @@
+use bit_field::BitField;
 use crate::dmg::sound::traits::Tick;
 
 pub struct VolumeEnvelope {
@@ -11,12 +12,29 @@ pub struct VolumeEnvelope {
 }
 
 impl VolumeEnvelope {
+    pub fn set_nr12(&mut self, v: u8) {
+        self.starting_volume = v >> 4;
+        self.add_mode = v.get_bit(3);
+        self.period = v & 0b111;
+    }
+
+    pub fn get_nr12(&self) -> u8 {
+        (self.starting_volume << 4) | if self.add_mode { 0b100 } else { 0 } | self.period
+    }
     pub fn get_volume(&self) -> u8 {
+        println!("{} {} {}", self.period, self.volume, self.starting_volume);
+
         if self.period > 0 {
             self.volume
         } else {
             self.starting_volume
         }
+    }
+
+    pub fn trigger(&mut self) {
+        self.volume = self.starting_volume;
+        self.finished = false;
+        self.timer = if self.period != 0 { self.period } else { 8 };
     }
 }
 
@@ -41,7 +59,7 @@ impl Tick for VolumeEnvelope {
             return;
         }
 
-        self.timer -= 1;
+        self.timer = self.timer.saturating_sub(1);
 
         if self.timer <= 0 {
             self.timer = if self.period != 0 { self.period } else { 8 };

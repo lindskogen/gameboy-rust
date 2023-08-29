@@ -39,7 +39,7 @@ impl Mem for Channel2 {
 
 impl Tick for Channel2 {
     fn tick(&mut self) {
-        self.timer.saturating_sub(1);
+        self.timer = self.timer.saturating_sub(1);
 
         if self.timer == 0 {
             self.timer = (2048 - self.frequency) << 2;

@@ -146,7 +146,7 @@ impl Tick for Apu {
                     // noop
                 }
                 6 => {
-                    self.channel1.frequency_sweep.tick();
+                    self.channel1.tick_frequency_sweep();
                     self.tick_all_channel_lengths();
                 }
                 7 => {
@@ -240,6 +240,7 @@ impl Mem for Apu {
                     self.frame_sequencer = 0;
                 }
 
+                println!("enable apu {}", enable_apu);
                 self.enabled = enable_apu;
             }
             0xff30..=0xff3f => self.channel3.write(addr, v),
@@ -248,7 +249,6 @@ impl Mem for Apu {
             0xff16 if !self.enabled => self.channel2.write(addr, v & 0x3f),
             0xff1b if !self.enabled => self.channel3.write(addr, v),
             0xff20 if !self.enabled => self.channel4.write(addr, v & 0x3f),
-            _ if !self.enabled => {}
             0xff10..=0xff14 => self.channel1.write(addr, v),
             0xff15..=0xff19 => self.channel2.write(addr, v),
             0xff1a..=0xff1e => self.channel3.write(addr, v),

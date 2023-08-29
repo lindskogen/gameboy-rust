@@ -12,6 +12,7 @@ use crate::dmg::sound::traits::Tick;
 pub struct Core {
     bus: MemoryBus,
     cpu: ProcessingUnit,
+    sample_timer: u8,
 }
 
 fn read_rom_file(filename: &str) -> io::Result<RomBuffer> {
@@ -41,6 +42,7 @@ impl Core {
         Self {
             cpu: ProcessingUnit::new(),
             bus: MemoryBus::new(Some(boot_rom_buffer), game_rom_buffer),
+            sample_timer: 0
         }
     }
 
@@ -54,6 +56,7 @@ impl Core {
         Self {
             cpu,
             bus: MemoryBus::new_without_boot_rom(game_rom_buffer),
+            sample_timer: 0
         }
     }
 
@@ -70,7 +73,15 @@ impl Core {
 
         for _ in 0..elapsed {
             self.bus.apu.tick();
-            audio_buffer.push(self.bus.apu.sample());
+            self.sample_timer += 1;
+
+            if self.sample_timer == 95 {
+                self.sample_timer = 0;
+                let x = self.bus.apu.sample();
+                println!("Sample: {:?}", x);
+                audio_buffer.push(x);
+            }
+
         }
 
         should_render
