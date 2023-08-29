@@ -54,6 +54,11 @@ impl LengthCounter {
             self.length = self.full_length - v;
         }
     }
+
+    pub fn power_off(&mut self) {
+        self.enabled = false;
+        self.frame_sequencer = 0;
+    }
 }
 
 impl Default for LengthCounter {

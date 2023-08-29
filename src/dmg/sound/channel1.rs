@@ -122,4 +122,16 @@ impl Channel1 {
             self.common.channel_enabled = false;
         }
     }
+
+    pub fn power_off(&mut self) {
+        self.frequency_sweep.power_off();
+        self.volume_envelope.power_off();
+        self.common.length_counter.power_off();
+
+        self.common.channel_enabled = false;
+        self.common.dac_enabled = false;
+
+        self.sequence = 0;
+        self.duty = 0;
+    }
 }

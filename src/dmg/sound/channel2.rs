@@ -57,3 +57,10 @@ impl Tick for Channel2 {
         }
     }
 }
+
+
+impl Channel2 {
+    pub fn power_off(&mut self) {
+        todo!()
+    }
+}

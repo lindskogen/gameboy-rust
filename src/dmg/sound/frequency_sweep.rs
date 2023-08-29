@@ -71,6 +71,21 @@ impl FrequencySweep {
             self.calculate();
         }
     }
+
+    pub fn power_off(&mut self) {
+        self.enabled = false;
+        self.overflow = false;
+        self.has_negated = false;
+
+        self.timer = 0;
+
+        self.frequency = 0;
+        self.shadow_frequency = 0;
+
+        self.period = 0;
+        self.negate = false;
+        self.shift = 0;
+    }
 }
 
 

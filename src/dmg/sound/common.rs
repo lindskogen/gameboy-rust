@@ -1,4 +1,5 @@
 use crate::dmg::sound::length_counter::LengthCounter;
+use crate::dmg::sound::traits::Tick;
 
 pub struct ChannelCommon {
     pub channel_no: u8,
@@ -17,6 +18,13 @@ impl ChannelCommon {
             output: 0,
             channel_enabled: false,
             length_counter: LengthCounter::default()
+        }
+    }
+
+    pub fn tick_channel_length(&mut self) {
+        self.length_counter.tick();
+        if self.length_counter.is_enabled() && self.length_counter.is_zero() {
+            self.channel_enabled = false;
         }
     }
 }

@@ -4,7 +4,6 @@ use crate::dmg::sound::traits::Tick;
 pub struct VolumeEnvelope {
     timer: u8,
     period: u8,
-    clock: u8,
     add_mode: bool,
     starting_volume: u8,
     volume: u8,
@@ -34,6 +33,17 @@ impl VolumeEnvelope {
         self.finished = false;
         self.timer = if self.period != 0 { self.period } else { 8 };
     }
+
+    pub fn power_off(&mut self) {
+        self.finished = false;
+        self.timer = 0;
+
+        self.starting_volume = 0;
+        self.add_mode = false;
+        self.period = 0;
+
+        self.volume = 0;
+    }
 }
 
 impl Default for VolumeEnvelope {
@@ -45,7 +55,6 @@ impl Default for VolumeEnvelope {
             volume: 0,
             finished: true,
             add_mode: false,
-            clock: 0,
         }
     }
 }

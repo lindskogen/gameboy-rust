@@ -1,4 +1,4 @@
-use crate::dmg::sound::common::{ChannelCommon, DUTY_TABLE};
+use crate::dmg::sound::common::ChannelCommon;
 use crate::dmg::sound::traits::{Mem, Tick};
 use crate::dmg::sound::volume_envelope::VolumeEnvelope;
 
@@ -33,5 +33,11 @@ impl Mem for Channel4 {
 impl Tick for Channel4 {
     fn tick(&mut self) {
        // TODO implement!
+    }
+}
+
+impl Channel4 {
+    pub fn power_off(&mut self) {
+        todo!()
     }
 }

@@ -36,7 +36,7 @@ pub fn setup_audio_device() -> (AudioPlayer, Stream) {
     let err_fn = |err| eprintln!("An error occurred on the output audio stream: {}", err);
 
 
-    let mut shared_buffer = Arc::new(Mutex::new(Vec::new()));
+    let shared_buffer = Arc::new(Mutex::new(Vec::new()));
     let stream_buffer = shared_buffer.clone();
 
 

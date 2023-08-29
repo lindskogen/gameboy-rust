@@ -1,14 +1,12 @@
 use std::env;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use cpal::traits::DeviceTrait;
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
-use dmg::dmg::audio::setup_audio_device;
 
+use dmg::dmg::audio::setup_audio_device;
 use dmg::dmg::core::Core;
 use dmg::dmg::input::JoypadInput;
-use dmg::state::{restore_state, save_state};
+use dmg::state::restore_state;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;

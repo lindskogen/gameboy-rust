@@ -151,6 +151,7 @@ impl Tick for Apu {
                 7 => {
                     self.channel1.volume_envelope.tick();
                     self.channel2.volume_envelope.tick();
+                    // no volume envelope for ch 3
                     self.channel4.volume_envelope.tick();
                 }
                 _ => {}
@@ -181,17 +182,26 @@ impl Apu {
         self.right_volume = 0;
         self.enabled = false;
 
+        self.channel1.power_off();
+        self.channel2.power_off();
+        self.channel3.power_off();
+        self.channel4.power_off();
+
         self.channel_enabled = ChannelEnabled::empty();
     }
 
     fn tick_all_channels(&mut self) {
         self.channel1.tick();
         self.channel2.tick();
+        self.channel3.tick();
+        self.channel4.tick();
     }
 
     fn tick_all_channel_lengths(&mut self) {
-        self.channel1.common.length_counter.tick();
-        self.channel2.common.length_counter.tick();
+        self.channel1.common.tick_channel_length();
+        self.channel2.common.tick_channel_length();
+        self.channel3.common.tick_channel_length();
+        self.channel4.common.tick_channel_length();
     }
 }
 
