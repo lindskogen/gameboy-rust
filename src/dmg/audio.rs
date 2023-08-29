@@ -64,4 +64,7 @@ fn cpal_thread<T: FromSample<f32>>(outbuffer: &mut [T], audio_buffer: &Arc<Mutex
         outbuffer[i * 2] = (&in_l).to_sample();
         outbuffer[i * 2 + 1] = (&in_r).to_sample();
     }
+    if inbuffer.len() > 2048 {
+        inbuffer.truncate(512)
+    }
 }
