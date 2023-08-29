@@ -3,7 +3,7 @@ use crate::dmg::sound::traits::Tick;
 
 pub struct ChannelCommon {
     pub channel_no: u8,
-    pub channel_enabled: bool,
+    pub ch_enabled: bool,
     pub dac_enabled: bool,
     pub output: u8,
     pub length_counter: LengthCounter,
@@ -16,7 +16,7 @@ impl ChannelCommon {
             dac_enabled: false,
             channel_no,
             output: 0,
-            channel_enabled: false,
+            ch_enabled: false,
             length_counter: LengthCounter::default()
         }
     }
@@ -24,8 +24,12 @@ impl ChannelCommon {
     pub fn tick_channel_length(&mut self) {
         self.length_counter.tick();
         if self.length_counter.is_enabled() && self.length_counter.is_zero() {
-            self.channel_enabled = false;
+            self.ch_enabled = false;
         }
+    }
+
+    pub fn is_channel_enabled(&self) -> bool {
+        self.dac_enabled && self.ch_enabled
     }
 }
 

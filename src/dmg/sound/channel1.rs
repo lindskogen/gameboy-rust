@@ -50,7 +50,7 @@ impl Mem for Channel1 {
                 self.frequency_sweep.set_nr10(v);
 
                 if !self.frequency_sweep.is_enabled() {
-                    self.common.channel_enabled = false;
+                    self.common.ch_enabled = false;
                 }
             }
             0xff11 => {
@@ -59,7 +59,7 @@ impl Mem for Channel1 {
             }
             0xff12 => {
                 self.common.dac_enabled = (v & 0xf8) != 0;
-                self.common.channel_enabled = self.common.channel_enabled && self.common.dac_enabled;
+                self.common.ch_enabled = self.common.is_channel_enabled();
                 self.volume_envelope.set_nr12(v);
             }
             0xff13 => {
@@ -70,7 +70,7 @@ impl Mem for Channel1 {
                 self.common.length_counter.set_nr14(v);
 
                 if self.common.length_counter.is_enabled() && self.common.length_counter.is_zero() {
-                    self.common.channel_enabled = false;
+                    self.common.ch_enabled = false;
                 } else if v.get_bit(7) {
                     self.trigger()
                 }
@@ -89,7 +89,7 @@ impl Tick for Channel1 {
             self.timer = (2048 - self.frequency_sweep.get_frequency()) << 2;
             self.sequence = (self.sequence + 1) % 7;
 
-            self.common.output = if self.common.channel_enabled && self.common.dac_enabled {
+            self.common.output = if self.common.is_channel_enabled() {
                 if DUTY_TABLE[self.duty as usize][self.sequence] == 1 {
                     self.volume_envelope.get_volume()
                 } else {
@@ -109,9 +109,9 @@ impl Channel1 {
         self.volume_envelope.trigger();
         self.frequency_sweep.trigger();
         if self.frequency_sweep.is_enabled() {
-            self.common.channel_enabled = self.common.dac_enabled;
+            self.common.ch_enabled = self.common.dac_enabled;
         } else {
-            self.common.channel_enabled = false;
+            self.common.ch_enabled = false;
         }
     }
 
@@ -119,7 +119,7 @@ impl Channel1 {
         self.frequency_sweep.tick();
 
         if !self.frequency_sweep.is_enabled() {
-            self.common.channel_enabled = false;
+            self.common.ch_enabled = false;
         }
     }
 
@@ -128,7 +128,7 @@ impl Channel1 {
         self.volume_envelope.power_off();
         self.common.length_counter.power_off();
 
-        self.common.channel_enabled = false;
+        self.common.ch_enabled = false;
         self.common.dac_enabled = false;
 
         self.sequence = 0;

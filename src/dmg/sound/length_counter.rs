@@ -51,7 +51,7 @@ impl LengthCounter {
         if self.length == 0 {
             self.length = self.full_length
         } else {
-            self.length = self.full_length - v;
+            self.length = self.full_length.saturating_sub(v);
         }
     }
 

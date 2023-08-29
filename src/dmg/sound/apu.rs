@@ -226,10 +226,10 @@ impl Mem for Apu {
             0xff26 => {
                 let mut b = 0;
                 b.set_bit(7, self.enabled);
-                b.set_bit(0, self.channel1.common.channel_enabled);
-                b.set_bit(1, self.channel2.common.channel_enabled);
-                b.set_bit(2, self.channel3.common.channel_enabled);
-                b.set_bit(3, self.channel4.common.channel_enabled);
+                b.set_bit(0, self.channel1.common.ch_enabled);
+                b.set_bit(1, self.channel2.common.ch_enabled);
+                b.set_bit(2, self.channel3.common.ch_enabled);
+                b.set_bit(3, self.channel4.common.ch_enabled);
                 b | 0x70
             }
             0xff27..=0xff2f => 0xff,
