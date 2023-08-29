@@ -2,7 +2,7 @@ use bit_field::BitField;
 use crate::dmg::sound::traits::Tick;
 
 pub struct LengthCounter {
-    pub enabled: bool,
+    enabled: bool,
     length: u8,
     full_length: u8,
     pub frame_sequencer: u8,
@@ -12,9 +12,10 @@ impl LengthCounter {
     pub fn is_zero(&self) -> bool {
         self.length == 0
     }
-}
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
 
-impl LengthCounter {
     pub fn set_nr14(&mut self, v: u8) {
         let enable = v.get_bit(6);
         let trigger = v.get_bit(7);

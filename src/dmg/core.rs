@@ -1,7 +1,8 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use serde::{Serialize, Deserialize};
+
+use serde::{Deserialize, Serialize};
 
 use crate::dmg::cpu::ProcessingUnit;
 use crate::dmg::input::JoypadInput;
@@ -77,9 +78,7 @@ impl Core {
 
             if self.sample_timer == 95 {
                 self.sample_timer = 0;
-                let x = self.bus.apu.sample();
-                println!("Sample: {:?}", x);
-                audio_buffer.push(x);
+                audio_buffer.push(self.bus.apu.sample());
             }
 
         }

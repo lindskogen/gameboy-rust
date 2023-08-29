@@ -1,9 +1,9 @@
 use bit_field::BitField;
+
 use crate::dmg::sound::common::{ChannelCommon, DUTY_TABLE};
 use crate::dmg::sound::frequency_sweep::FrequencySweep;
 use crate::dmg::sound::traits::{Mem, Tick};
 use crate::dmg::sound::volume_envelope::VolumeEnvelope;
-
 
 pub struct Channel1 {
     pub common: ChannelCommon,
@@ -36,7 +36,7 @@ impl Mem for Channel1 {
             0xff12 => self.volume_envelope.get_nr12(),
             0xff13 => 0xff,
             0xff14 => {
-                0xbf | if self.common.length_counter.enabled {
+                0xbf | if self.common.length_counter.is_enabled() {
                     0x40
                 } else { 0 }
             }
@@ -45,7 +45,6 @@ impl Mem for Channel1 {
     }
 
     fn write(&mut self, addr: u16, v: u8) {
-        println!("write {:4X} {:8b}", addr, v);
         match addr {
             0xff10 => {
                 self.frequency_sweep.set_nr10(v);
@@ -70,7 +69,7 @@ impl Mem for Channel1 {
                 self.frequency_sweep.set_nr14(v);
                 self.common.length_counter.set_nr14(v);
 
-                if self.common.length_counter.enabled && self.common.length_counter.is_zero() {
+                if self.common.length_counter.is_enabled() && self.common.length_counter.is_zero() {
                     self.common.channel_enabled = false;
                 } else if v.get_bit(7) {
                     self.trigger()
@@ -89,8 +88,6 @@ impl Tick for Channel1 {
         if self.timer == 0 {
             self.timer = (2048 - self.frequency_sweep.get_frequency()) << 2;
             self.sequence = (self.sequence + 1) % 7;
-
-            println!("ch en {}", self.common.channel_enabled);
 
             self.common.output = if self.common.channel_enabled && self.common.dac_enabled {
                 if DUTY_TABLE[self.duty as usize][self.sequence] == 1 {

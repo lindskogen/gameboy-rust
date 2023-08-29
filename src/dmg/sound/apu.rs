@@ -79,7 +79,6 @@ impl Apu {
             right += self.channel4.common.output as f32;
         }
 
-
         (
             (left / 16.0) * self.master_volume,
             (right / 16.0) * self.master_volume
@@ -162,13 +161,13 @@ impl Tick for Apu {
             self.channel1.common.length_counter.frame_sequencer = self.frame_sequencer;
             self.channel2.common.length_counter.frame_sequencer = self.frame_sequencer;
 
-            self.tick_all_channels();
+        }
+        self.tick_all_channels();
 
-            self.frequency_counter -= 1;
+        self.frequency_counter -= 1;
 
-            if self.frequency_counter == 0 {
-                self.frequency_counter = 95;
-            }
+        if self.frequency_counter == 0 {
+            self.frequency_counter = 95;
         }
     }
 }

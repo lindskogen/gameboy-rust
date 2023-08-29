@@ -22,8 +22,6 @@ impl VolumeEnvelope {
         (self.starting_volume << 4) | if self.add_mode { 0b100 } else { 0 } | self.period
     }
     pub fn get_volume(&self) -> u8 {
-        println!("{} {} {}", self.period, self.volume, self.starting_volume);
-
         if self.period > 0 {
             self.volume
         } else {
@@ -61,7 +59,7 @@ impl Tick for VolumeEnvelope {
 
         self.timer = self.timer.saturating_sub(1);
 
-        if self.timer <= 0 {
+        if self.timer == 0 {
             self.timer = if self.period != 0 { self.period } else { 8 };
 
             if self.add_mode && self.volume < 15 {

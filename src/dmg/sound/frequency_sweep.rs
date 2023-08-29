@@ -97,6 +97,8 @@ impl Tick for FrequencySweep {
             return;
         }
 
+        self.timer = self.timer.saturating_sub(1);
+
         if self.timer == 0 {
             self.timer = if self.period != 0 { self.period } else { 8 };
 
