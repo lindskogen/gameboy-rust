@@ -1,6 +1,6 @@
 use bit_field::BitField;
 
-use crate::dmg::debug::lookup_op_code;
+use super::debug::lookup_op_code;
 use crate::dmg::mem::MemoryBus;
 
 use super::Flags;

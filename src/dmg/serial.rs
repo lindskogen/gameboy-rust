@@ -1,6 +1,7 @@
 use bit_field::BitField;
 
 use serde::{Serialize, Deserialize};
+use crate::dmg::traits::Mem;
 
 #[derive(Serialize, Deserialize)]
 pub struct Serial {
@@ -17,8 +18,8 @@ impl Default for Serial {
     }
 }
 
-impl Serial {
-    pub fn read(&self, addr: u16) -> u8 {
+impl Mem for Serial {
+    fn read_byte(&self, addr: u16) -> u8 {
         // TODO: implement Serial transfers some day
         match addr {
             0xff01 | 0xff02 => 0x00,
@@ -26,7 +27,7 @@ impl Serial {
         }
     }
 
-    pub fn write(&mut self, addr: u16, v: u8) {
+    fn write_byte(&mut self, addr: u16, v: u8) {
         match addr {
             0xff01 => self.value = Some(v),
             0xff02 if v.get_bit(7) => {

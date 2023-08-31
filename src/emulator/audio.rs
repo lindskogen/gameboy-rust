@@ -5,7 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 pub struct AudioPlayer {
     pub buffer: Arc<Mutex<Vec<(f32, f32)>>>,
-    sample_rate: u32,
+    pub sample_rate: u32,
 }
 
 pub fn setup_audio_device() -> (AudioPlayer, Stream) {

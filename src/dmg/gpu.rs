@@ -642,30 +642,5 @@ impl GPU {
 
         return None;
     }
-
-    pub fn debug_vram_into_buffer(&self, buffer: &mut Vec<u32>) {
-        for i in 0usize..(144 / 8) * (160 / 8) {
-            for y in 0..8 {
-                for x in 0..8 {
-                    buffer[(i * 8 % 160) + x + (y + i * 8 / 160 * 8) * 160] =
-                        self.get_pixel_color((0x8000 + i * 16) as u16, y as u8, x as u8).to_rgb()
-                }
-            }
-        }
-    }
-
-    pub fn debug_print(&self) {
-        for i in 0..0x20 {
-            let from = i * 0x10;
-            let buffer = &self.vram[from..(from + 0x10)];
-
-            let absolute_addr = from + VRAM_BEGIN;
-            if buffer.iter().any(|n| *n != 0) {
-                println!("{:x}: {:02x?}", absolute_addr, buffer);
-            } else {
-                println!("{:x}: ", absolute_addr);
-            }
-        }
-    }
 }
 

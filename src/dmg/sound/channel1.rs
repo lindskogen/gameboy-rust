@@ -2,7 +2,7 @@ use bit_field::BitField;
 
 use crate::dmg::sound::common::{ChannelCommon, DUTY_TABLE};
 use crate::dmg::sound::frequency_sweep::FrequencySweep;
-use crate::dmg::sound::traits::{Mem, Tick};
+use crate::dmg::traits::{Mem, Tick};
 use crate::dmg::sound::volume_envelope::VolumeEnvelope;
 
 pub struct Channel1 {
@@ -29,7 +29,7 @@ impl Default for Channel1 {
 }
 
 impl Mem for Channel1 {
-    fn read(&self, addr: u16) -> u8 {
+    fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0xff10 => self.frequency_sweep.get_nr10(),
             0xff11 => (self.duty << 6) | 0x3f,
@@ -44,7 +44,7 @@ impl Mem for Channel1 {
         }
     }
 
-    fn write(&mut self, addr: u16, v: u8) {
+    fn write_byte(&mut self, addr: u16, v: u8) {
         match addr {
             0xff10 => {
                 self.frequency_sweep.set_nr10(v);

@@ -7,13 +7,15 @@ use serde::{Deserialize, Serialize};
 use crate::dmg::cpu::ProcessingUnit;
 use crate::dmg::input::JoypadInput;
 use crate::dmg::mem::{MemoryBus, RomBuffer};
-use crate::dmg::sound::traits::Tick;
+use crate::dmg::sound::sampler::{AudioSampler, StereoSample};
+use crate::dmg::traits::Tick;
+use crate::emulator::audio::AudioPlayer;
 
 #[derive(Serialize, Deserialize)]
 pub struct Core {
     bus: MemoryBus,
     cpu: ProcessingUnit,
-    sample_timer: u8,
+    audio_sampler: AudioSampler,
 }
 
 fn read_rom_file(filename: &str) -> io::Result<RomBuffer> {
@@ -43,7 +45,7 @@ impl Core {
         Self {
             cpu: ProcessingUnit::new(),
             bus: MemoryBus::new(Some(boot_rom_buffer), game_rom_buffer),
-            sample_timer: 0
+            audio_sampler: AudioSampler::default()
         }
     }
 
@@ -57,7 +59,7 @@ impl Core {
         Self {
             cpu,
             bus: MemoryBus::new_without_boot_rom(game_rom_buffer),
-            sample_timer: 0
+            audio_sampler: AudioSampler::default()
         }
     }
 
@@ -66,7 +68,7 @@ impl Core {
         self.bus.ppu.initialize_gameboy_doctor();
     }
 
-    pub fn step(&mut self, buffer: &mut Vec<u32>, audio_buffer: &mut Vec<(f32, f32)>, keys_pressed: JoypadInput) -> bool {
+    pub fn step(&mut self, buffer: &mut Vec<u32>, audio_player: &mut AudioPlayer, keys_pressed: JoypadInput) -> bool {
         self.bus.input.update(keys_pressed);
         let elapsed = self.cpu.next(&mut self.bus);
 
@@ -74,13 +76,7 @@ impl Core {
 
         for _ in 0..elapsed {
             self.bus.apu.tick();
-            self.sample_timer += 1;
-
-            if self.sample_timer == 95 {
-                self.sample_timer = 0;
-                audio_buffer.push(self.bus.apu.sample());
-            }
-
+            self.audio_sampler.tick(&self.bus.apu, audio_player);
         }
 
         should_render

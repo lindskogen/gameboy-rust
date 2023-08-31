@@ -16,8 +16,8 @@ use crate::dmg::intf::InterruptFlag;
 use crate::dmg::mbc::MBCWrapper;
 use crate::dmg::serial::Serial;
 use serde::{Serialize, Deserialize};
-use crate::dmg::sound::apu::Apu;
-use crate::dmg::sound::traits::Mem;
+use crate::dmg::sound::Apu;
+use crate::dmg::traits::Mem;
 
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
@@ -99,39 +99,20 @@ impl MemoryBus {
         }
     }
 
-    pub fn write_byte(&mut self, addr: u16, value: u8) {
-        let address = addr as usize;
-
-        match address {
-            0x0000..=0x7fff => self.mbc.write_rom(address, value),
-            0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
-            0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff] = value,
-            0xff4d | 0xff7f => {}
-            0xff00 => self.input.write(value),
-            0xff01..=0xff02 => self.serial.write(addr, value),
-            0xa000..=0xbfff => self.mbc.write_ram(address, value),
-            0x8000..=0x9fff => self.ppu.write_vram(addr, value),
-            0xfe00..=0xfe9f => self.ppu.write_vram(addr, value),
-            0xff46 => self.dma_transfer(value),
-            0xff40..=0xff4f => self.ppu.write_vram(addr, value),
-            0xff68..=0xff6b => self.ppu.write_vram(addr, value),
-            0xff04..=0xff07 => self.ppu.write_vram(addr, value),
-            0xff10..=0xff3f => self.apu.write(addr, value),
-            0xff0f => self.ppu.write_vram(addr, value), // TODO: move interrupt flags here
-            0xff50 => {
-                self.boot_rom_disabled = value == 1;
-            }
-            0xfea0..=0xfeff => { /* Unusable */ }
-            0xff80..=0xfffe => self.zram[address & 0x007f] = value,
-            0xffff => {
-                self.interrupt_enable = InterruptFlag::from_bits_truncate(value);
-                // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
-            }
-
-            _ => unreachable!("MEM: Write to unmapped address: {:04X}", address)
+    fn dma_transfer(&mut self, addr: u8) {
+        let address_block: u16 = (addr as u16) << 8;
+        for i in 0..=0x9f {
+            self.write_byte(0xfe00 + i, self.read_byte(address_block + i));
         }
     }
 
+    pub fn check_interrupt(&self) -> bool {
+        self.interrupt_enable
+            .intersects(self.ppu.interrupt_flag)
+    }
+}
+
+impl MemoryBus {
     pub fn read_byte(&self, addr: u16) -> u8 {
         let address = addr as usize;
 
@@ -146,14 +127,14 @@ impl MemoryBus {
             0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff],
             0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff],
             0xff4d | 0xff4f | 0xff51..=0xff55 | 0xff6c | 0xff70 | 0xff7f => { 0xff }
-            0xff00 => { self.input.read() }
-            0xff01..=0xff02 => self.serial.read(addr),
+            0xff00 => { self.input.read_byte(addr) }
+            0xff01..=0xff02 => self.serial.read_byte(addr),
             0x8000..=0x9fff => self.ppu.read_vram(addr),
             0xfe00..=0xfe9f => self.ppu.read_vram(addr),
             0xff40..=0xff4f => self.ppu.read_vram(addr),
             0xff68..=0xff6b => self.ppu.read_vram(addr),
             0xff04..=0xff07 => self.ppu.read_vram(addr),
-            0xff10..=0xff3f => self.apu.read(addr),
+            0xff10..=0xff3f => self.apu.read_byte(addr),
             0xfea0..=0xfeff => { /* Unusable */ 0xff }
             0xff80..=0xfffe => self.zram[address & 0x007f],
             0xff0f => self.ppu.read_vram(addr), // TODO: move interrupt flags here
@@ -164,16 +145,35 @@ impl MemoryBus {
         val
     }
 
-    fn dma_transfer(&mut self, addr: u8) {
-        let address_block: u16 = (addr as u16) << 8;
-        for i in 0..=0x9f {
-            self.write_byte(0xfe00 + i, self.read_byte(address_block + i));
-        }
-    }
+    pub fn write_byte(&mut self, addr: u16, value: u8) {
+        let address = addr as usize;
 
-    pub fn check_interrupt(&self) -> bool {
-        self.interrupt_enable
-            .intersects(self.ppu.interrupt_flag)
+        match address {
+            0x0000..=0x7fff => self.mbc.write_rom(address, value),
+            0xc000..=0xcfff | 0xe000..=0xefff => self.wram[address & 0x0fff] = value,
+            0xd000..=0xdfff | 0xf000..=0xfdff => self.wram[(self.wram_bank * 0x1000) | address & 0x0fff] = value,
+            0xff4d | 0xff7f => {}
+            0xff00 => self.input.write_byte(addr, value),
+            0xff01..=0xff02 => self.serial.write_byte(addr, value),
+            0xa000..=0xbfff => self.mbc.write_ram(address, value),
+            0x8000..=0x9fff => self.ppu.write_vram(addr, value),
+            0xfe00..=0xfe9f => self.ppu.write_vram(addr, value),
+            0xff46 => self.dma_transfer(value),
+            0xff40..=0xff4f => self.ppu.write_vram(addr, value),
+            0xff68..=0xff6b => self.ppu.write_vram(addr, value),
+            0xff04..=0xff07 => self.ppu.write_vram(addr, value),
+            0xff10..=0xff3f => self.apu.write_byte(addr, value),
+            0xff0f => self.ppu.write_vram(addr, value), // TODO: move interrupt flags here
+            0xff50 => self.boot_rom_disabled = value == 1,
+            0xfea0..=0xfeff => { /* Unusable */ }
+            0xff80..=0xfffe => self.zram[address & 0x007f] = value,
+            0xffff => {
+                self.interrupt_enable = InterruptFlag::from_bits_truncate(value);
+                // eprintln!("++ interrupts_enabled: {:?}", self.interrupts_enabled);
+            }
+
+            _ => unreachable!("MEM: Write to unmapped address: {:04X}", address)
+        }
     }
 }
 

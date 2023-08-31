@@ -1,5 +1,5 @@
 use crate::dmg::sound::length_counter::LengthCounter;
-use crate::dmg::sound::traits::Tick;
+use crate::dmg::traits::Tick;
 
 pub struct ChannelCommon {
     pub channel_no: u8,

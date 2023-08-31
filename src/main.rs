@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 
-use dmg::dmg::audio::setup_audio_device;
 use dmg::dmg::core::Core;
 use dmg::dmg::input::JoypadInput;
-use dmg::state::restore_state;
+use dmg::emulator::audio::setup_audio_device;
+use dmg::emulator::state::restore_state;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -32,7 +32,7 @@ fn main() {
     window.limit_update_rate(Some(Duration::from_micros(16600)));
 
 
-    let (audio_player, audio_stream) = setup_audio_device();
+    let (mut audio_player, audio_stream) = setup_audio_device();
 
     let new_core = Core::load_without_boot_rom(game_rom);
 
@@ -55,9 +55,7 @@ fn main() {
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let keys_pressed = detect_keys(&window);
 
-        let mut audio_buffer = audio_player.buffer.lock().unwrap();
-
-        let should_render = core.step(&mut display_buffer, &mut audio_buffer, keys_pressed);
+        let should_render = core.step(&mut display_buffer, &mut audio_player, keys_pressed);
 
         if should_render {
             // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way

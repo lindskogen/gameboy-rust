@@ -1,6 +1,5 @@
 pub mod core;
 mod cpu;
-mod debug;
 mod gpu;
 mod intf;
 mod mem;
@@ -8,4 +7,4 @@ mod mbc;
 pub mod input;
 mod serial;
 mod sound;
-pub mod audio;
+pub mod traits;

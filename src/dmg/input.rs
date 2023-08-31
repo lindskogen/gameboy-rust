@@ -1,6 +1,7 @@
 use bit_field::BitField;
 use bitflags::bitflags;
 use serde::{Serialize, Deserialize};
+use crate::dmg::traits::Mem;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
@@ -48,23 +49,13 @@ impl Default for Joypad {
 }
 
 impl Joypad {
-    pub fn write(&mut self, value: u8) {
-        let set_direction = value.get_bit(4) == false;
-        let set_action = value.get_bit(5) == false;
-
-        if set_direction {
-            self.mode = JoypadMode::Direction;
-        } else if set_action {
-            self.mode = JoypadMode::Action;
-        }
-    }
-
-
     pub fn update(&mut self, input: JoypadInput) {
         self.input = input;
     }
+}
 
-    pub fn read(&self) -> u8 {
+impl Mem for Joypad {
+    fn read_byte(&self, _addr: u16) -> u8 {
         let mut output = JoypadOutput::all();
         if self.mode == JoypadMode::Action {
             if self.input.contains(JoypadInput::START) {
@@ -94,5 +85,16 @@ impl Joypad {
             }
         }
         output.bits
+    }
+
+    fn write_byte(&mut self, _addr: u16, value: u8) {
+        let set_direction = value.get_bit(4) == false;
+        let set_action = value.get_bit(5) == false;
+
+        if set_direction {
+            self.mode = JoypadMode::Direction;
+        } else if set_action {
+            self.mode = JoypadMode::Action;
+        }
     }
 }

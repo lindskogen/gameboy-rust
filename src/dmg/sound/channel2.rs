@@ -1,6 +1,6 @@
 use bit_field::BitField;
 use crate::dmg::sound::common::{ChannelCommon, DUTY_TABLE};
-use crate::dmg::sound::traits::{Mem, Tick};
+use crate::dmg::traits::{Mem, Tick};
 use crate::dmg::sound::volume_envelope::VolumeEnvelope;
 
 pub struct Channel2 {
@@ -28,7 +28,7 @@ impl Default for Channel2 {
 }
 
 impl Mem for Channel2 {
-    fn read(&self, addr: u16) -> u8 {
+    fn read_byte(&self, addr: u16) -> u8 {
         match addr {
             0xff15 => 0xff,
             0xff16 => {
@@ -49,7 +49,7 @@ impl Mem for Channel2 {
         }
     }
 
-    fn write(&mut self, addr: u16, v: u8) {
+    fn write_byte(&mut self, addr: u16, v: u8) {
         match addr {
             0xff15 => {}
             0xff16 => {

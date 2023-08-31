@@ -1,2 +1,2 @@
 pub mod dmg;
-pub mod state;
+pub mod emulator;

@@ -2,11 +2,12 @@ use bit_field::BitField;
 use bitflags::bitflags;
 use serde::{Serialize, Deserialize};
 
-use crate::dmg::debug::{lookup_cb_prefix_op_code, lookup_op_code};
-
 use super::mem::MemoryBus;
 
 mod step;
+mod debug;
+
+use debug::{lookup_cb_prefix_op_code, lookup_op_code};
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
@@ -69,8 +70,7 @@ impl ProcessingUnit {
             sp: 0xFFFE,
             halted: false,
             interrupt_master_enable: false,
-
-            enable_debugging: true,
+            enable_debugging: false,
         }
     }
 
@@ -166,8 +166,7 @@ impl ProcessingUnit {
 
     pub fn debug_print(&self, pc: u16, bus: &MemoryBus) {
         if self.enable_debugging {
-            // println!("{:04X}: {}, PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", pc, self.lookup_op_code_for_pc(bus, pc).0, pc, self.read_byte(bus, pc), self.read_byte(bus, pc + 1), self.read_byte(bus, pc + 2), self.read_byte(bus, pc + 3));
-            // println!("A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, pc, self.read_byte(bus, pc), self.read_byte(bus, pc + 1), self.read_byte(bus, pc + 2), self.read_byte(bus, pc + 3));
+            println!("A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}", self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, pc, self.read_byte(bus, pc), self.read_byte(bus, pc + 1), self.read_byte(bus, pc + 2), self.read_byte(bus, pc + 3));
         }
     }
 

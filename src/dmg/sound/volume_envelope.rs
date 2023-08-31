@@ -1,5 +1,5 @@
 use bit_field::BitField;
-use crate::dmg::sound::traits::Tick;
+use crate::dmg::traits::Tick;
 
 pub struct VolumeEnvelope {
     timer: u8,
