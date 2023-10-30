@@ -20,3 +20,6 @@ serde_arrays = "0.1.0"
 [lib]
 name = "dmg"
 path = "src/lib.rs"
+
+[profile.release]
+debug = true
