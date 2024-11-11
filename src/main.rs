@@ -29,7 +29,7 @@ fn main() {
         panic!("{}", e);
     });
 
-    window.limit_update_rate(Some(Duration::from_micros(16600)));
+    window.set_target_fps(60);
 
 
     let (mut audio_player, audio_stream) = setup_audio_device();
